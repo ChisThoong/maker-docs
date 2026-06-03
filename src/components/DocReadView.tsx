@@ -55,7 +55,7 @@ export default function DocReadView({
   const router = useRouter();
   const [activeSection, setActiveSection] = useState<string>("");
   const parentDoc = breadcrumb.at(-1);
-  const isUrlDoc = doc.contentMode === "url";
+  const isPreviewDoc = doc.contentMode === "html" || doc.contentMode === "url";
 
   function goBack() {
     if (typeof window !== "undefined" && window.history.length > 1) {
@@ -70,7 +70,7 @@ export default function DocReadView({
   }
 
   const renderedHtml = useMemo(() => {
-    if (doc.contentMode === "url") return "";
+    if (isPreviewDoc) return "";
     const clean = sanitizeHtml(doc.content ?? "");
     if (typeof window === "undefined") return clean;
     const div = document.createElement("div");
@@ -79,10 +79,10 @@ export default function DocReadView({
       el.id = `sec-${i}`;
     });
     return div.innerHTML;
-  }, [doc.content, doc.contentMode]);
+  }, [doc.content, isPreviewDoc]);
 
   const toc = useMemo(() => {
-    if (doc.contentMode === "url") return [];
+    if (isPreviewDoc) return [];
     if (typeof window === "undefined") return [];
     const div = document.createElement("div");
     div.innerHTML = sanitizeHtml(doc.content ?? "");
@@ -91,7 +91,7 @@ export default function DocReadView({
       text: el.textContent ?? "",
       level: el.tagName === "H3" ? 3 : 2,
     }));
-  }, [doc.content, doc.contentMode]);
+  }, [doc.content, isPreviewDoc]);
 
   useEffect(() => {
     if (!toc.length) return;
@@ -178,26 +178,26 @@ export default function DocReadView({
       <div
         className={cn(
           "min-h-0 flex-1",
-          isUrlDoc ? "overflow-hidden" : "overflow-y-auto"
+          isPreviewDoc ? "overflow-hidden" : "overflow-y-auto"
         )}
       >
         <div
           className={cn(
             "doc-view flex w-full max-w-[1400px] gap-10 px-6 lg:gap-14",
-            isUrlDoc ? "h-full min-h-0 py-6" : "py-8"
+            isPreviewDoc ? "h-full min-h-0 py-6" : "py-8"
           )}
         >
           <article
             className={cn(
               "min-w-0 flex-1",
-              isUrlDoc && "flex min-h-0 flex-col"
+              isPreviewDoc && "flex min-h-0 flex-col"
             )}
           >
             {/* Doc header */}
             <header
               className={cn(
                 "doc-view-header animate-fade-up",
-                isUrlDoc && "shrink-0"
+                isPreviewDoc && "shrink-0"
               )}
             >
               <button
@@ -246,14 +246,14 @@ export default function DocReadView({
             </header>
 
             {/* Content */}
-            {doc.contentMode === "url" ? (
+            {isPreviewDoc ? (
               doc.content?.trim() ? (
                 <div className="doc-view-content mt-5 min-h-0 flex-1 animate-fade-up overflow-hidden rounded-2xl border border-line">
                   <DocContentFrame
                     content={doc.content}
-                    contentMode="url"
+                    contentMode={doc.contentMode}
                     title={doc.title}
-                    showUrlBar
+                    showUrlBar={doc.contentMode === "url"}
                     fill
                     className="h-full min-h-0"
                   />
@@ -268,7 +268,9 @@ export default function DocReadView({
                   >
                     Edit
                   </button>{" "}
-                  to add a deployed link.
+                  {doc.contentMode === "url"
+                    ? "to add a deployed link."
+                    : "to paste HTML."}
                 </div>
               )
             ) : doc.content?.trim() ? (
