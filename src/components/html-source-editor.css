@@ -1,0 +1,56 @@
+.html-cm-editor {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--panel-2);
+}
+
+/* @uiw/react-codemirror root — must not grow with document content */
+.html-cm-editor__cm {
+  height: 100% !important;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.html-cm-editor__cm .cm-editor {
+  height: 100% !important;
+  max-height: 100%;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.html-cm-editor__cm .cm-editor.cm-focused {
+  outline: none;
+}
+
+.html-cm-editor__cm .cm-scroller {
+  overflow: auto !important;
+  max-height: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.html-cm-editor__cm .cm-gutters {
+  border-right: 1px solid var(--border);
+  color: var(--text-subtle);
+  font-size: 12px;
+}
+
+.html-cm-editor__cm .cm-content {
+  caret-color: var(--text);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.html-cm-editor__cm .cm-placeholder {
+  color: var(--text-subtle);
+  font-style: normal;
+  font-size: 13px;
+}
+
+.html-cm-editor__cm .cm-selectionBackground,
+.html-cm-editor__cm .cm-focused .cm-selectionBackground {
+  background: color-mix(in srgb, var(--brand) 22%, transparent) !important;
+}
