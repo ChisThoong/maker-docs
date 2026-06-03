@@ -16,8 +16,11 @@ export default function ReaderLayout({
       style={{
         margin: 0,
         padding: 0,
-        minHeight: "100vh",
-        background: "#fff",
+        width: "100%",
+        height: "100dvh",
+        overflow: "hidden",
+        background: "#060a14",
+        colorScheme: "dark",
       }}
     >
       {children}

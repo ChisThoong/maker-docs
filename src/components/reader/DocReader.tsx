@@ -1,14 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, FileWarning, Lock } from "lucide-react";
-import { prepareIframeHtml } from "@/lib/iframe-html";
+import type { ContentMode } from "@/lib/types";
+import {
+  DOC_IFRAME_SANDBOX,
+  externalEmbedSrc,
+  normalizeExternalUrl,
+  resolveDocEmbed,
+} from "@/lib/content-embed";
 
 type State = "loading" | "ok" | "forbidden" | "notfound";
 
 const pageCenter: React.CSSProperties = {
   display: "flex",
-  minHeight: "100vh",
+  minHeight: "100dvh",
   alignItems: "center",
   justifyContent: "center",
   margin: 0,
@@ -23,6 +29,7 @@ export default function DocReader({
   token?: string;
 }) {
   const [content, setContent] = useState("");
+  const [contentMode, setContentMode] = useState<ContentMode>("html");
   const [state, setState] = useState<State>("loading");
 
   useEffect(() => {
@@ -34,11 +41,10 @@ export default function DocReader({
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.doc) return setState("notfound");
       setContent(data.doc.content ?? "");
+      setContentMode(data.doc.contentMode ?? "html");
       setState("ok");
     })();
   }, [id, token]);
-
-  const iframeHtml = useMemo(() => prepareIframeHtml(content), [content]);
 
   if (state === "loading") {
     return (
@@ -77,19 +83,42 @@ export default function DocReader({
     );
   }
 
+  const embed = resolveDocEmbed({ content, contentMode });
+  const invalidUrl = contentMode === "url" && !normalizeExternalUrl(content);
+  if (invalidUrl) {
+    return (
+      <div
+        style={{
+          ...pageCenter,
+          padding: "0 24px",
+          textAlign: "center",
+          color: "#6b7280",
+        }}
+      >
+        Enter a valid https:// URL to preview this document.
+      </div>
+    );
+  }
+
   return (
     <iframe
       title="document"
-      srcDoc={iframeHtml}
-      sandbox="allow-scripts allow-popups allow-forms allow-modals"
+      {...(embed.kind === "url"
+        ? { src: externalEmbedSrc(embed.url) }
+        : { srcDoc: embed.html })}
+      sandbox={DOC_IFRAME_SANDBOX}
       style={{
         position: "fixed",
         inset: 0,
-        width: "100%",
-        height: "100%",
+        width: "100vw",
+        height: "100dvh",
+        minHeight: "100vh",
         border: 0,
         margin: 0,
         padding: 0,
+        display: "block",
+        background: "#060a14",
+        colorScheme: "dark",
       }}
     />
   );

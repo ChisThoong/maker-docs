@@ -14,7 +14,7 @@ export type DocType =
   | "feature"
   | "doc";
 
-export type ContentMode = "html" | "markdown";
+export type ContentMode = "html" | "markdown" | "url";
 
 /** "inherit" follows the parent; "restricted" hides the subtree from everyone
  * except explicit grantees, the owner, and workspace admins. */

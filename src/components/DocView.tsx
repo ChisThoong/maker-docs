@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Loader2, FileWarning } from "lucide-react";
-import type { Doc, DocMeta, DocStatus } from "@/lib/types";
+import type { Doc, DocMeta, DocStatus, ContentMode } from "@/lib/types";
 import { useDocs } from "./DocsProvider";
 import ShareModal from "./ShareModal";
 import DocEditor from "./DocEditor";
 import DocReadView from "./DocReadView";
 import { usePrefs, toggleFavorite, recordVisit } from "@/lib/prefs";
 import { toast } from "@/lib/ui-feedback";
+import { normalizeExternalUrl } from "@/lib/content-embed";
 
 interface DocAccess {
   canView: boolean;
@@ -42,6 +43,7 @@ export default function DocView({ id }: { id: string }) {
   const [status, setStatus] = useState<DocStatus>("concept");
   const [tags, setTags] = useState<string[]>([]);
   const [content, setContent] = useState("");
+  const [contentMode, setContentMode] = useState<ContentMode>("html");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -68,6 +70,7 @@ export default function DocView({ id }: { id: string }) {
     setStatus(d.status);
     setTags(d.tags ?? []);
     setContent(d.content ?? "");
+    setContentMode(d.contentMode ?? "html");
     setEditing(false);
     setLoading(false);
     window.setTimeout(() => recordVisit(id), 0);
@@ -92,6 +95,13 @@ export default function DocView({ id }: { id: string }) {
 
   async function handleSave() {
     if (!doc) return;
+    if (contentMode === "url") {
+      const url = normalizeExternalUrl(content);
+      if (!url) {
+        toast.error("Enter a valid http(s) URL");
+        return;
+      }
+    }
     setSaving(true);
     const patch = {
       title: title.trim() || "Untitled",
@@ -99,7 +109,8 @@ export default function DocView({ id }: { id: string }) {
       icon,
       status,
       tags,
-      content,
+      content: contentMode === "url" ? normalizeExternalUrl(content)! : content,
+      contentMode,
     };
     const res = await fetch(`/api/docs/${id}`, {
       method: "PATCH",
@@ -174,6 +185,7 @@ export default function DocView({ id }: { id: string }) {
           status={status}
           tags={tagList}
           content={content}
+          contentMode={contentMode}
           updatedAt={doc.updatedAt}
           saving={saving}
           onTitle={setTitle}
@@ -182,6 +194,7 @@ export default function DocView({ id }: { id: string }) {
           onStatus={setStatus}
           onTags={setTags}
           onContent={setContent}
+          onContentMode={setContentMode}
           onCancel={() => load()}
           onSave={handleSave}
         />

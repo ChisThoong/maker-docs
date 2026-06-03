@@ -17,6 +17,7 @@ import { TYPE_META } from "@/lib/types";
 import { sanitizeHtml } from "@/lib/sanitize";
 import DocIcon from "./DocIcon";
 import StatusBadge from "./StatusBadge";
+import DocContentFrame from "./DocContentFrame";
 import { cn, timeAgo } from "@/lib/utils";
 
 interface DocAccess {
@@ -54,6 +55,7 @@ export default function DocReadView({
   const router = useRouter();
   const [activeSection, setActiveSection] = useState<string>("");
   const parentDoc = breadcrumb.at(-1);
+  const isUrlDoc = doc.contentMode === "url";
 
   function goBack() {
     if (typeof window !== "undefined" && window.history.length > 1) {
@@ -68,6 +70,7 @@ export default function DocReadView({
   }
 
   const renderedHtml = useMemo(() => {
+    if (doc.contentMode === "url") return "";
     const clean = sanitizeHtml(doc.content ?? "");
     if (typeof window === "undefined") return clean;
     const div = document.createElement("div");
@@ -76,9 +79,10 @@ export default function DocReadView({
       el.id = `sec-${i}`;
     });
     return div.innerHTML;
-  }, [doc.content]);
+  }, [doc.content, doc.contentMode]);
 
   const toc = useMemo(() => {
+    if (doc.contentMode === "url") return [];
     if (typeof window === "undefined") return [];
     const div = document.createElement("div");
     div.innerHTML = sanitizeHtml(doc.content ?? "");
@@ -87,7 +91,7 @@ export default function DocReadView({
       text: el.textContent ?? "",
       level: el.tagName === "H3" ? 3 : 2,
     }));
-  }, [doc.content]);
+  }, [doc.content, doc.contentMode]);
 
   useEffect(() => {
     if (!toc.length) return;
@@ -111,7 +115,7 @@ export default function DocReadView({
   }, [toc, renderedHtml]);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       {/* Top bar */}
       <div className="glass sticky top-0 z-20 flex items-center gap-2 border-b border-line px-6 py-2.5">
         <nav className="flex min-w-0 flex-1 items-center gap-1 text-sm text-subtle">
@@ -171,11 +175,31 @@ export default function DocReadView({
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="doc-view flex w-full max-w-[1400px] gap-10 px-6 py-8 lg:gap-14">
-          <article className="min-w-0 flex-1">
+      <div
+        className={cn(
+          "min-h-0 flex-1",
+          isUrlDoc ? "overflow-hidden" : "overflow-y-auto"
+        )}
+      >
+        <div
+          className={cn(
+            "doc-view flex w-full max-w-[1400px] gap-10 px-6 lg:gap-14",
+            isUrlDoc ? "h-full min-h-0 py-6" : "py-8"
+          )}
+        >
+          <article
+            className={cn(
+              "min-w-0 flex-1",
+              isUrlDoc && "flex min-h-0 flex-col"
+            )}
+          >
             {/* Doc header */}
-            <header className="doc-view-header animate-fade-up">
+            <header
+              className={cn(
+                "doc-view-header animate-fade-up",
+                isUrlDoc && "shrink-0"
+              )}
+            >
               <button
                 type="button"
                 onClick={goBack}
@@ -222,7 +246,32 @@ export default function DocReadView({
             </header>
 
             {/* Content */}
-            {doc.content?.trim() ? (
+            {doc.contentMode === "url" ? (
+              doc.content?.trim() ? (
+                <div className="doc-view-content mt-5 min-h-0 flex-1 animate-fade-up overflow-hidden rounded-2xl border border-line">
+                  <DocContentFrame
+                    content={doc.content}
+                    contentMode="url"
+                    title={doc.title}
+                    showUrlBar
+                    fill
+                    className="h-full min-h-0"
+                  />
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-line p-10 text-center text-subtle">
+                  No URL set. Click{" "}
+                  <button
+                    type="button"
+                    onClick={onEdit}
+                    className="font-medium text-brand hover:underline"
+                  >
+                    Edit
+                  </button>{" "}
+                  to add a deployed link.
+                </div>
+              )
+            ) : doc.content?.trim() ? (
               <div
                 className="doc-content doc-view-content animate-fade-up"
                 dangerouslySetInnerHTML={{ __html: renderedHtml }}

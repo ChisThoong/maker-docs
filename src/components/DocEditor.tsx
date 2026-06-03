@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   Sparkles,
   Code2,
@@ -15,20 +15,22 @@ import {
   Upload,
   ImageIcon,
   FileText,
+  Link2,
 } from "lucide-react";
-import type { DocStatus } from "@/lib/types";
+import type { DocStatus, ContentMode } from "@/lib/types";
 import IconPicker from "./IconPicker";
 import StatusSelect from "./StatusSelect";
 import HtmlSourceEditor from "./HtmlSourceEditor";
+import DocContentFrame from "./DocContentFrame";
 import { HTML_GEN_PROMPT } from "@/lib/html-gen-prompt";
 import { cn, timeAgo } from "@/lib/utils";
-import { prepareIframeHtml } from "@/lib/iframe-html";
+import { normalizeExternalUrl } from "@/lib/content-embed";
 import { confirmAction, toast } from "@/lib/ui-feedback";
 
 const FILE_IMPORT_ENABLED = false;
 
 type EditTab = "source" | "preview";
-type ImportMode = "source" | "file";
+type ImportMode = "source" | "url" | "file";
 type ImportPhase = "idle" | "loading" | "success" | "error";
 
 function isHtmlFile(name: string): boolean {
@@ -65,6 +67,7 @@ interface Props {
   status: DocStatus;
   tags: string[];
   content: string;
+  contentMode: ContentMode;
   updatedAt: string;
   saving: boolean;
   onTitle: (v: string) => void;
@@ -73,6 +76,7 @@ interface Props {
   onStatus: (v: DocStatus) => void;
   onTags: (v: string[]) => void;
   onContent: (v: string) => void;
+  onContentMode: (v: ContentMode) => void;
   onCancel: () => void;
   onSave: () => void;
 }
@@ -84,6 +88,7 @@ export default function DocEditor({
   status,
   tags,
   content,
+  contentMode,
   updatedAt,
   saving,
   onTitle,
@@ -92,11 +97,14 @@ export default function DocEditor({
   onStatus,
   onTags,
   onContent,
+  onContentMode,
   onCancel,
   onSave,
 }: Props) {
   const [tab, setTab] = useState<EditTab>("source");
-  const [importMode, setImportMode] = useState<ImportMode>("source");
+  const [importMode, setImportMode] = useState<ImportMode>(
+    contentMode === "url" ? "url" : "source"
+  );
   const [importPhase, setImportPhase] = useState<ImportPhase>("idle");
   const [importMessage, setImportMessage] = useState("");
   const [pickedFiles, setPickedFiles] = useState<File[]>([]);
@@ -106,7 +114,28 @@ export default function DocEditor({
   const tagLock = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const previewHtml = useMemo(() => prepareIframeHtml(content), [content]);
+  const isUrlMode = contentMode === "url";
+  const externalUrl = normalizeExternalUrl(content);
+
+  function selectImportMode(mode: ImportMode) {
+    setImportMode(mode);
+    if (mode === "url") {
+      onContentMode("url");
+      setTab("source");
+    } else if (mode === "source") {
+      onContentMode("html");
+      setTab("source");
+    }
+  }
+
+  const tabs: { id: EditTab; label: string; icon: typeof Code2 }[] = [
+    {
+      id: "source",
+      label: isUrlMode ? "URL" : "HTML Source",
+      icon: isUrlMode ? Link2 : Code2,
+    },
+    { id: "preview", label: "Preview", icon: Eye },
+  ];
 
   function normalizeTag(raw: string) {
     return raw.trim().replace(/^#/, "");
@@ -164,6 +193,7 @@ export default function DocEditor({
           if (match) html = match[1];
         }
         onContent(content.trim() ? `${content}\n${html}` : html);
+        onContentMode("html");
         setImportPhase("success");
         setImportMessage("HTML imported successfully!");
         setImportMode("file");
@@ -227,6 +257,7 @@ export default function DocEditor({
       }
 
       onContent(data.html);
+      onContentMode("html");
       setImportPhase("success");
       setImportMessage("HTML generated successfully!");
       setImportMode("file");
@@ -264,13 +295,34 @@ export default function DocEditor({
     toast.success("HTML prompt copied");
   }
 
-  const tabs: { id: EditTab; label: string; icon: typeof Code2 }[] = [
-    { id: "source", label: "HTML Source", icon: Code2 },
-    { id: "preview", label: "Preview", icon: Eye },
-  ];
-
   function renderEditorBody(className?: string) {
     if (tab === "source") {
+      if (isUrlMode) {
+        return (
+          <div className={cn("flex flex-col gap-3 p-5", className)}>
+            <label className="text-xs font-semibold uppercase tracking-wide text-subtle">
+              Deployed URL
+            </label>
+            <input
+              type="url"
+              value={content}
+              onChange={(e) => onContent(e.target.value)}
+              placeholder="https://woe-hero-sprout.trungt1987.workers.dev/"
+              className="w-full rounded-xl border border-line bg-panel-2 px-3.5 py-2.5 font-mono text-sm text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+            <p className="text-xs leading-relaxed text-subtle">
+              Paste the live link from Cloudflare Workers, Pages, Netlify, or any
+              static host. Preview loads the page directly — no HTML paste needed.
+            </p>
+            {content.trim() && !externalUrl && (
+              <p className="text-xs text-rose-600 dark:text-rose-400">
+                URL must start with http:// or https://
+              </p>
+            )}
+          </div>
+        );
+      }
+
       return (
         <HtmlSourceEditor
           value={content}
@@ -283,21 +335,15 @@ export default function DocEditor({
     }
 
     return (
-      <div className={cn("relative overflow-hidden bg-panel-2", className)}>
-        {content.trim() ? (
-          <iframe
-            title="Preview"
-            srcDoc={previewHtml}
-            sandbox="allow-scripts allow-popups allow-forms allow-modals"
-            className="absolute inset-0 h-full w-full border-0"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center p-6">
-            <p className="text-center text-sm text-subtle">
-              No content yet — paste HTML or import a file.
-            </p>
-          </div>
-        )}
+      <div className={cn("relative min-h-0 overflow-hidden", className)}>
+        <DocContentFrame
+          content={content}
+          contentMode={contentMode}
+          title="Preview"
+          fill
+          showUrlBar={isUrlMode}
+          className="h-full"
+        />
       </div>
     );
   }
@@ -312,6 +358,11 @@ export default function DocEditor({
       title: "HTML Source",
       desc: "Paste HTML directly into the editor",
     },
+    {
+      id: "url",
+      title: "External URL",
+      desc: "Link to an already deployed page (Workers, Pages…)",
+    },
     ...(FILE_IMPORT_ENABLED
       ? [
           {
@@ -324,7 +375,7 @@ export default function DocEditor({
   ];
 
   return (
-    <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col bg-canvas">
+    <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col overflow-hidden bg-canvas">
       {/* Page header */}
       <div className="shrink-0 px-6 pb-4 pt-5">
         <div className="mb-1 flex items-center gap-2">
@@ -334,15 +385,15 @@ export default function DocEditor({
           </h1>
         </div>
         <p className="text-sm text-muted">
-          Edit HTML source, or import files and images from the panel on the right.
+          Paste HTML, link a deployed URL, or import from the panel on the right.
         </p>
       </div>
 
-      <div className="flex min-h-0 flex-1 gap-5 px-6 pb-6">
+      <div className="flex min-h-0 flex-1 gap-5 overflow-hidden px-6 pb-6">
         {/* Main column */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
           {/* Meta card */}
-          <div className="rounded-2xl border border-line bg-panel p-5 shadow-[var(--shadow-sm)]">
+          <div className="shrink-0 rounded-2xl border border-line bg-panel p-5 shadow-[var(--shadow-sm)]">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-subtle">
@@ -457,6 +508,34 @@ export default function DocEditor({
 
               <div className="ml-auto flex items-center gap-2 pb-1 pr-1">
                 {tab === "source" && (
+                  <div className="flex rounded-lg border border-line bg-panel-2 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => selectImportMode("source")}
+                      className={cn(
+                        "rounded-md px-2 py-1 text-[11px] font-medium transition",
+                        !isUrlMode
+                          ? "bg-panel text-ink shadow-sm"
+                          : "text-muted hover:text-ink"
+                      )}
+                    >
+                      HTML
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => selectImportMode("url")}
+                      className={cn(
+                        "rounded-md px-2 py-1 text-[11px] font-medium transition",
+                        isUrlMode
+                          ? "bg-panel text-ink shadow-sm"
+                          : "text-muted hover:text-ink"
+                      )}
+                    >
+                      URL
+                    </button>
+                  </div>
+                )}
+                {tab === "source" && !isUrlMode && (
                   <button
                     type="button"
                     onClick={copyHtmlPrompt}
@@ -467,7 +546,7 @@ export default function DocEditor({
                     Copy prompt
                   </button>
                 )}
-                {tab === "source" && (
+                {tab === "source" && !isUrlMode && (
                   <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
                     <span>Wrap</span>
                     <button
@@ -489,16 +568,11 @@ export default function DocEditor({
                     </button>
                   </label>
                 )}
-                {tab === "source" && (
-                  <span className="rounded-lg border border-line bg-panel-2 px-2 py-1 text-[11px] font-medium text-muted">
-                    HTML
-                  </span>
-                )}
               </div>
             </div>
 
-            {/* Editor body — grows to fill viewport; CodeMirror scrolls internally */}
-            <div className="min-h-[420px] flex-1 overflow-hidden">
+            {/* Editor body stays fixed; CodeMirror / iframe scroll internally. */}
+            <div className="min-h-0 flex-1 overflow-hidden">
               {renderEditorBody("h-full")}
             </div>
 
@@ -515,8 +589,9 @@ export default function DocEditor({
                     if (!content.trim()) return;
                     const ok = await confirmAction({
                       title: "Clear content",
-                      message:
-                        "Clear all HTML in the editor? Unsaved changes will be lost.",
+                      message: isUrlMode
+                        ? "Clear the URL? Unsaved changes will be lost."
+                        : "Clear all HTML in the editor? Unsaved changes will be lost.",
                       confirmLabel: "Delete",
                       cancelLabel: "Cancel",
                       danger: true,
@@ -552,7 +627,7 @@ export default function DocEditor({
         </div>
 
         {/* Right sidebar */}
-        <aside className="hidden w-[280px] shrink-0 space-y-4 xl:block">
+        <aside className="hidden min-h-0 w-[280px] shrink-0 space-y-4 overflow-y-auto xl:block">
           <div className="rounded-2xl border border-line bg-panel p-4 shadow-[var(--shadow-sm)]">
             <div className="mb-3 flex items-center gap-2">
               <Sparkles size={16} className="text-brand" />
@@ -565,10 +640,7 @@ export default function DocEditor({
                   <button
                     key={opt.id}
                     type="button"
-                    onClick={() => {
-                      setImportMode(opt.id);
-                      if (opt.id === "source") setTab("source");
-                    }}
+                    onClick={() => selectImportMode(opt.id)}
                     className={cn(
                       "flex w-full items-start gap-3 rounded-xl border p-3 text-left transition",
                       active
@@ -678,10 +750,10 @@ export default function DocEditor({
             </div>
             <ul className="space-y-2.5">
               {[
-                "Paste HTML directly in the HTML Source tab",
+                "Paste HTML in HTML Source mode",
+                "Use External URL for pages already on Workers or static hosts",
                 "Use Copy prompt to generate HTML with external AI",
                 "Preview before saving",
-                "Embed CSS/JS in a single HTML file",
               ].map((tip) => (
                 <li
                   key={tip}
