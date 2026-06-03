@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { getDb, COL } from "./mongodb";
 import { getProfile } from "./profiles";
 import { getAclMap, type AccessLevel, type ACEntry } from "./acl";
+import { pathSegmentFromTitle } from "./doc-paths";
 import { jobPositionSlug, jobPositionSlugLegacy } from "./job-positions";
 import type { DocMeta, DocVisibility } from "./types";
 
@@ -112,6 +113,7 @@ interface StructNode {
   parentId: string | null;
   createdBy: string | null;
   visibility: DocVisibility;
+  title: string;
 }
 
 export interface AccessResolver {
@@ -120,33 +122,20 @@ export interface AccessResolver {
   capsOf: (docId: string) => Capabilities;
   canCreateUnder: (parentId: string | null) => boolean;
   filterMetas: (metas: DocMeta[]) => DocMeta[];
+  pathOf: (docId: string) => string;
 }
 
-/**
- * Loads the document structure + all ACL entries once, then resolves the
- * effective access for any document via RBAC + inherited ACL + restriction.
- */
-export async function buildResolver(
-  ctx: AccessContext
-): Promise<AccessResolver> {
-  const db = await getDb();
-  const rows = await db
-    .collection(COL.documents)
-    .find({}, { projection: { _id: 1, parentId: 1, createdBy: 1, visibility: 1 } })
-    .toArray();
+const RESOLVER_TTL_MS = 20_000;
+const resolverCache = new Map<
+  string,
+  { at: number; resolver: AccessResolver }
+>();
 
-  const struct = new Map<string, StructNode>();
-  for (const r of rows) {
-    const createdBy = (r.createdBy as string | null) ?? null;
-    struct.set(String(r._id), {
-      parentId: (r.parentId as string | null) ?? null,
-      createdBy: createdBy ? createdBy.toLowerCase() : null,
-      visibility: (r.visibility as DocVisibility) ?? "inherit",
-    });
-  }
-
-  const aclMap = await getAclMap();
-
+function createResolver(
+  ctx: AccessContext,
+  struct: Map<string, StructNode>,
+  aclMap: Map<string, ACEntry[]>
+): AccessResolver {
   const matches = (e: ACEntry): boolean =>
     e.subjectType === "user"
       ? e.subjectId.toLowerCase() === ctx.email
@@ -198,5 +187,79 @@ export async function buildResolver(
     return metas.filter((m) => rankOf(m.id) >= 1);
   }
 
-  return { ctx, rankOf, capsOf, canCreateUnder, filterMetas };
+  function pathOf(docId: string): string {
+    const segments: string[] = [];
+    let cur: string | null = docId;
+    const guard = new Set<string>();
+    while (cur && !guard.has(cur)) {
+      guard.add(cur);
+      const n = struct.get(cur);
+      if (!n) break;
+      segments.unshift(pathSegmentFromTitle(n.title));
+      cur = n.parentId;
+    }
+    return segments.length ? `/${segments.join("/")}` : "/";
+  }
+
+  return { ctx, rankOf, capsOf, canCreateUnder, filterMetas, pathOf };
+}
+
+async function buildResolverUncached(
+  ctx: AccessContext
+): Promise<AccessResolver> {
+  const db = await getDb();
+  const [rows, aclMap] = await Promise.all([
+    db
+      .collection(COL.documents)
+      .find(
+        {},
+        {
+          projection: {
+            _id: 1,
+            parentId: 1,
+            createdBy: 1,
+            visibility: 1,
+            title: 1,
+          },
+        }
+      )
+      .toArray(),
+    getAclMap(),
+  ]);
+
+  const struct = new Map<string, StructNode>();
+  for (const r of rows) {
+    const createdBy = (r.createdBy as string | null) ?? null;
+    struct.set(String(r._id), {
+      parentId: (r.parentId as string | null) ?? null,
+      createdBy: createdBy ? createdBy.toLowerCase() : null,
+      visibility: (r.visibility as DocVisibility) ?? "inherit",
+      title: String(r.title ?? "Untitled"),
+    });
+  }
+
+  return createResolver(ctx, struct, aclMap);
+}
+
+/**
+ * Loads the document structure + all ACL entries once, then resolves the
+ * effective access for any document via RBAC + inherited ACL + restriction.
+ * Cached briefly per user on warm serverless instances.
+ */
+export async function buildResolver(
+  ctx: AccessContext
+): Promise<AccessResolver> {
+  const cached = resolverCache.get(ctx.email);
+  if (cached && Date.now() - cached.at < RESOLVER_TTL_MS) {
+    return cached.resolver;
+  }
+  const resolver = await buildResolverUncached(ctx);
+  resolverCache.set(ctx.email, { at: Date.now(), resolver });
+  return resolver;
+}
+
+/** Drop cached ACL/tree after permission or doc structure changes. */
+export function invalidateAccessResolverCache(email?: string) {
+  if (email) resolverCache.delete(email.toLowerCase());
+  else resolverCache.clear();
 }

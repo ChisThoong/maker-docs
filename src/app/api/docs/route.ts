@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listDocs, createDoc } from "@/lib/docs";
-import { getAccessContext, buildResolver } from "@/lib/permissions";
+import { getAccessContext, buildResolver, invalidateAccessResolverCache } from "@/lib/permissions";
 import { logActivity } from "@/lib/activity";
 
 export const dynamic = "force-dynamic";
@@ -10,8 +10,7 @@ export async function GET() {
     const ctx = await getAccessContext();
     if (!ctx) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-    const all = await listDocs();
-    const resolver = await buildResolver(ctx);
+    const [all, resolver] = await Promise.all([listDocs(), buildResolver(ctx)]);
     const docs = resolver.filterMetas(all);
 
     return NextResponse.json({
@@ -49,6 +48,7 @@ export async function POST(req: NextRequest) {
       action: "created",
       status: doc.status,
     });
+    invalidateAccessResolverCache();
     return NextResponse.json({ doc }, { status: 201 });
   } catch (err) {
     console.error("POST /api/docs", err);

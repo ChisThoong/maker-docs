@@ -1,4 +1,5 @@
-import { getProfile, upsertProfile } from "./profiles";
+import { getDb, COL } from "./mongodb";
+import type { DocProfile } from "./profiles";
 
 const MAX_RECENTS = 12;
 
@@ -7,12 +8,42 @@ export interface UserPrefs {
   recents: string[];
 }
 
-export async function getUserPrefs(email: string): Promise<UserPrefs> {
-  const p = await getProfile(email);
+function toPrefs(doc: Pick<DocProfile, "favorites" | "recents"> | null): UserPrefs {
   return {
-    favorites: p?.favorites ?? [],
-    recents: p?.recents ?? [],
+    favorites: doc?.favorites ?? [],
+    recents: doc?.recents ?? [],
   };
+}
+
+export async function getUserPrefs(email: string): Promise<UserPrefs> {
+  const db = await getDb();
+  const doc = await db
+    .collection<DocProfile>(COL.profiles)
+    .findOne(
+      { email },
+      { projection: { _id: 0, favorites: 1, recents: 1 } }
+    );
+  return toPrefs(doc);
+}
+
+async function savePrefs(
+  email: string,
+  patch: Partial<Pick<DocProfile, "favorites" | "recents">>
+): Promise<UserPrefs> {
+  const db = await getDb();
+  const doc = await db.collection<DocProfile>(COL.profiles).findOneAndUpdate(
+    { email },
+    {
+      $set: { ...patch, updatedAt: new Date().toISOString() },
+      $setOnInsert: { email },
+    },
+    {
+      upsert: true,
+      returnDocument: "after",
+      projection: { _id: 0, favorites: 1, recents: 1 },
+    }
+  );
+  return toPrefs(doc);
 }
 
 export async function recordDocVisit(
@@ -24,8 +55,7 @@ export async function recordDocVisit(
     docId,
     ...current.recents.filter((id) => id !== docId),
   ].slice(0, MAX_RECENTS);
-  await upsertProfile(email, { recents });
-  return { ...current, recents };
+  return savePrefs(email, { recents, favorites: current.favorites });
 }
 
 export async function toggleDocFavorite(
@@ -37,8 +67,7 @@ export async function toggleDocFavorite(
   const favorites = has
     ? current.favorites.filter((id) => id !== docId)
     : [docId, ...current.favorites];
-  await upsertProfile(email, { favorites });
-  return { ...current, favorites };
+  return savePrefs(email, { favorites, recents: current.recents });
 }
 
 /** Keep only ids the user can still access. */

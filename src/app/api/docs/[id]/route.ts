@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDoc, updateDoc, deleteDoc, listDocs } from "@/lib/docs";
+import { getDoc, updateDoc, deleteDoc } from "@/lib/docs";
 import { deleteAclForDocs } from "@/lib/acl";
-import { getAccessContext, buildResolver } from "@/lib/permissions";
-import { buildDocPath } from "@/lib/doc-paths";
+import { getAccessContext, buildResolver, invalidateAccessResolverCache } from "@/lib/permissions";
 import { logActivity } from "@/lib/activity";
 
 export const dynamic = "force-dynamic";
@@ -16,17 +15,22 @@ export async function GET(
     const ctx = await getAccessContext();
     if (!ctx) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-    const resolver = await buildResolver(ctx);
+    const resolverPromise = buildResolver(ctx);
+    const docPromise = getDoc(id);
+    const resolver = await resolverPromise;
     const caps = resolver.capsOf(id);
     if (!caps.canView) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 });
     }
 
-    const doc = await getDoc(id);
+    const doc = await docPromise;
     if (!doc) return NextResponse.json({ error: "not_found" }, { status: 404 });
-    const metas = await listDocs();
-    const path = buildDocPath(id, metas);
-    return NextResponse.json({ doc, access: caps, path });
+
+    return NextResponse.json({
+      doc,
+      access: caps,
+      path: resolver.pathOf(id),
+    });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 503 });
   }
@@ -65,9 +69,8 @@ export async function PATCH(
       previousStatus: before?.status ?? null,
     });
 
-    const metas = await listDocs();
-    const path = buildDocPath(id, metas);
-    return NextResponse.json({ doc, path });
+    invalidateAccessResolverCache();
+    return NextResponse.json({ doc, path: resolver.pathOf(id) });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
@@ -89,6 +92,7 @@ export async function DELETE(
 
     const deleted = await deleteDoc(id);
     await deleteAclForDocs(deleted);
+    invalidateAccessResolverCache();
     return NextResponse.json({ deleted });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });

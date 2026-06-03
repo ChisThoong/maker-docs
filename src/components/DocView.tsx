@@ -70,7 +70,7 @@ export default function DocView({ id }: { id: string }) {
     setContent(d.content ?? "");
     setEditing(false);
     setLoading(false);
-    recordVisit(id);
+    window.setTimeout(() => recordVisit(id), 0);
   }, [id]);
 
   useEffect(() => {
