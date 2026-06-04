@@ -9,7 +9,7 @@ import type { SpineBundleMeta } from "./types";
 const SERVER_URL = process.env.NEXT_PUBLIC_UPLOAD_SERVER_URL ?? "";
 const SERVER_KEY = process.env.NEXT_PUBLIC_UPLOAD_SERVER_KEY ?? "";
 const DIRECT_UPLOAD_LIMIT = 18 * 1024 * 1024;
-const CHUNK_SIZE = 8 * 1024 * 1024;
+const CHUNK_SIZE = 6 * 1024 * 1024;
 
 /** Upload a base64 data URL and return the public file URL. */
 export async function uploadToServer(
