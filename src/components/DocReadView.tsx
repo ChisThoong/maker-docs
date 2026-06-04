@@ -15,7 +15,7 @@ import {
 import type { Doc, DocMeta } from "@/lib/types";
 import { TYPE_META } from "@/lib/types";
 import { sanitizeHtml } from "@/lib/sanitize";
-import DocIcon from "./DocIcon";
+import DocIcon, { isImage } from "./DocIcon";
 import StatusBadge from "./StatusBadge";
 import DocContentFrame from "./DocContentFrame";
 import { cn, timeAgo } from "@/lib/utils";
@@ -56,6 +56,7 @@ export default function DocReadView({
   const [activeSection, setActiveSection] = useState<string>("");
   const parentDoc = breadcrumb.at(-1);
   const isPreviewDoc = doc.contentMode === "html" || doc.contentMode === "url";
+  const imageIcon = isImage(doc.icon);
 
   function goBack() {
     if (typeof window !== "undefined" && window.history.length > 1) {
@@ -210,11 +211,17 @@ export default function DocReadView({
               </button>
 
               <div className="flex items-center gap-3">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-panel-2 text-ink ring-1 ring-line">
+                <span
+                  className={cn(
+                    "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-panel-2 text-ink ring-1 ring-line",
+                    imageIcon && "overflow-hidden !rounded-lg p-0"
+                  )}
+                >
                   <DocIcon
                     icon={doc.icon}
                     fallback={TYPE_META[doc.type].icon}
-                    size={22}
+                    size={imageIcon ? 44 : 22}
+                    className={imageIcon ? "!rounded-lg" : undefined}
                   />
                 </span>
                 <h1 className="text-[1.75rem] font-bold leading-tight tracking-tight text-ink sm:text-[2rem]">

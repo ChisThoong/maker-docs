@@ -191,6 +191,7 @@ export default function SidebarItem({
   const status = STATUS_META[doc.status];
   const branchActive =
     isActive || isOnActiveBranch(doc.id, activeId, docs);
+  const docImageIcon = isImage(doc.icon);
 
   if (collapsed && flyout) {
     return (
@@ -217,12 +218,17 @@ export default function SidebarItem({
             />
           </button>
 
-          <span className="flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-md">
+          <span
+            className={cn(
+              "flex shrink-0 items-center justify-center overflow-hidden rounded-sm",
+              docImageIcon ? "h-5 w-5" : "h-4 w-4"
+            )}
+          >
             <DocIcon
               icon={doc.icon}
               fallback={TYPE_META[doc.type].icon}
-              size={isImage(doc.icon) ? 16 : 15}
-              className={isImage(doc.icon) ? "rounded-md" : undefined}
+              size={docImageIcon ? 20 : 15}
+              className={docImageIcon ? "rounded-sm" : undefined}
             />
           </span>
 
@@ -262,7 +268,7 @@ export default function SidebarItem({
   if (collapsed) {
     if (depth > 0) return null;
 
-    const imageIcon = isImage(doc.icon);
+    const imageIcon = docImageIcon;
     const iconSize = imageIcon ? 36 : 17;
 
     const iconButton = (
@@ -371,12 +377,17 @@ export default function SidebarItem({
           />
         </button>
 
-        <span className="flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-md">
+        <span
+          className={cn(
+            "flex shrink-0 items-center justify-center overflow-hidden rounded-sm",
+            docImageIcon ? "h-5 w-5" : "h-4 w-4"
+          )}
+        >
           <DocIcon
             icon={doc.icon}
             fallback={TYPE_META[doc.type].icon}
-            size={isImage(doc.icon) ? 16 : 15}
-            className={isImage(doc.icon) ? "rounded-md" : undefined}
+            size={docImageIcon ? 20 : 15}
+            className={docImageIcon ? "rounded-sm" : undefined}
           />
         </span>
 
