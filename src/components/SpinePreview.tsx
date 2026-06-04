@@ -5,6 +5,7 @@ import type { SpineBundleMeta } from "@/lib/types";
 import { formatFileSize } from "@/lib/file-content";
 import { spinePlayerHtml } from "@/lib/spine-content";
 import { cn } from "@/lib/utils";
+import { useTheme } from "./ThemeProvider";
 
 export default function SpinePreview({
   spine,
@@ -17,6 +18,8 @@ export default function SpinePreview({
   className?: string;
   compact?: boolean;
 }) {
+  const { resolvedTheme } = useTheme();
+
   return (
     <div
       className={cn(
@@ -52,9 +55,9 @@ export default function SpinePreview({
       </div>
       <iframe
         title={title || spine.name}
-        srcDoc={spinePlayerHtml(spine)}
+        srcDoc={spinePlayerHtml(spine, resolvedTheme)}
         sandbox="allow-scripts allow-same-origin"
-        className="min-h-0 flex-1 border-0 bg-[#060a14]"
+        className="min-h-0 flex-1 border-0 bg-slate-50 dark:bg-[#060a14]"
       />
     </div>
   );

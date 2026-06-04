@@ -10,6 +10,7 @@ import {
   resolveDocEmbed,
 } from "@/lib/content-embed";
 import { spinePlayerHtml } from "@/lib/spine-content";
+import { useTheme } from "../ThemeProvider";
 
 type State = "loading" | "ok" | "forbidden" | "notfound";
 
@@ -29,6 +30,7 @@ export default function DocReader({
   id?: string;
   token?: string;
 }) {
+  const { resolvedTheme } = useTheme();
   const [content, setContent] = useState("");
   const [contentMode, setContentMode] = useState<ContentMode>("html");
   const [file, setFile] = useState<DocFileMeta | null>(null);
@@ -99,7 +101,7 @@ export default function DocReader({
     return (
       <iframe
         title={spine.name}
-        srcDoc={spinePlayerHtml(spine)}
+        srcDoc={spinePlayerHtml(spine, resolvedTheme)}
         sandbox="allow-scripts allow-same-origin"
         style={{
           position: "fixed",
@@ -110,8 +112,8 @@ export default function DocReader({
           margin: 0,
           padding: 0,
           display: "block",
-          background: "#060a14",
-          colorScheme: "dark",
+          background: resolvedTheme === "dark" ? "#060a14" : "#f8fafc",
+          colorScheme: resolvedTheme,
         }}
       />
     );
