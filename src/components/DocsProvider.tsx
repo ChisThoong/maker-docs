@@ -36,6 +36,9 @@ interface DocsContextValue {
   create: (input: CreateInput) => Promise<DocMeta | null>;
   patchMeta: (id: string, patch: Partial<DocMeta>) => void;
   remove: (id: string) => Promise<boolean>;
+  reorder: (
+    updates: { id: string; parentId: string | null; order: number }[]
+  ) => Promise<boolean>;
   childrenOf: (parentId: string | null) => DocMeta[];
 }
 
@@ -113,6 +116,32 @@ export function DocsProvider({ children }: { children: React.ReactNode }) {
     return false;
   }, []);
 
+  const reorder = useCallback(
+    async (updates: { id: string; parentId: string | null; order: number }[]) => {
+      if (!updates.length) return true;
+      const before = docs;
+      setDocs((prev) =>
+        prev.map((doc) => {
+          const update = updates.find((u) => u.id === doc.id);
+          return update
+            ? { ...doc, parentId: update.parentId, order: update.order }
+            : doc;
+        })
+      );
+
+      const res = await fetch("/api/docs/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updates }),
+      });
+      if (res.ok) return true;
+      setDocs(before);
+      await refresh();
+      return false;
+    },
+    [docs, refresh]
+  );
+
   const childrenOf = useCallback(
     (parentId: string | null) =>
       docs
@@ -132,9 +161,22 @@ export function DocsProvider({ children }: { children: React.ReactNode }) {
       create,
       patchMeta,
       remove,
+      reorder,
       childrenOf,
     }),
-    [docs, loading, error, workspaceRole, canCreate, refresh, create, patchMeta, remove, childrenOf]
+    [
+      docs,
+      loading,
+      error,
+      workspaceRole,
+      canCreate,
+      refresh,
+      create,
+      patchMeta,
+      remove,
+      reorder,
+      childrenOf,
+    ]
   );
 
   return <DocsContext.Provider value={value}>{children}</DocsContext.Provider>;

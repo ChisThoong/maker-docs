@@ -21,9 +21,18 @@ import { openCommand } from "./CommandPalette";
 import { useProfile } from "./ProfileProvider";
 import { formatJobPositionLabel } from "@/lib/job-positions";
 import { cn } from "@/lib/utils";
+import type { DocMeta } from "@/lib/types";
+import { toast } from "@/lib/ui-feedback";
+
+type DropIntent = "before" | "after" | "inside" | "root-end";
+
+interface DropTarget {
+  id: string | null;
+  intent: DropIntent;
+}
 
 export default function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
-  const { docs, loading, error, childrenOf, canCreate } = useDocs();
+  const { docs, loading, error, childrenOf, canCreate, reorder } = useDocs();
   const pathname = usePathname();
   const { profile } = useProfile();
   const displayName = profile?.name || profile?.email || "Member";
@@ -36,6 +45,8 @@ export default function Sidebar({ collapsed = false }: { collapsed?: boolean }) 
     : null;
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
 
   useEffect(() => {
     if (!activeId) return;
@@ -60,6 +71,92 @@ export default function Sidebar({ collapsed = false }: { collapsed?: boolean }) 
   }
 
   const roots = childrenOf(null);
+  const byId = new Map(docs.map((d) => [d.id, d]));
+
+  function isDescendant(parentId: string | null, possibleAncestorId: string) {
+    let cur = parentId ? byId.get(parentId) : undefined;
+    while (cur) {
+      if (cur.id === possibleAncestorId) return true;
+      cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+    }
+    return false;
+  }
+
+  function orderedChildren(parentId: string | null, source: DocMeta[] = docs) {
+    return source
+      .filter((d) => d.parentId === parentId)
+      .sort((a, b) => a.order - b.order);
+  }
+
+  async function moveDoc(targetId: string | null, intent: DropIntent) {
+    if (!draggingId) return;
+    const dragged = byId.get(draggingId);
+    if (!dragged) return;
+
+    const target = targetId ? byId.get(targetId) : null;
+    if (targetId && !target) return;
+    if (targetId === draggingId) return;
+
+    let nextParentId: string | null;
+    if (intent === "inside") {
+      if (!target || target.type !== "folder") return;
+      nextParentId = target.id;
+    } else if (intent === "root-end") {
+      nextParentId = null;
+    } else {
+      nextParentId = target?.parentId ?? null;
+    }
+
+    if (nextParentId === draggingId || isDescendant(nextParentId, draggingId)) {
+      toast.error("Can't move a folder into itself.");
+      return;
+    }
+
+    const oldParentId = dragged.parentId;
+    const affectedParents = new Set<string | null>([oldParentId, nextParentId]);
+    const targetSiblings = orderedChildren(nextParentId).filter((d) => d.id !== draggingId);
+    let insertAt = targetSiblings.length;
+
+    if ((intent === "before" || intent === "after") && target) {
+      const targetIndex = targetSiblings.findIndex((d) => d.id === target.id);
+      if (targetIndex >= 0) insertAt = intent === "before" ? targetIndex : targetIndex + 1;
+    }
+
+    const nextTargetSiblings = [
+      ...targetSiblings.slice(0, insertAt),
+      { ...dragged, parentId: nextParentId },
+      ...targetSiblings.slice(insertAt),
+    ];
+
+    const updatesMap = new Map<
+      string,
+      { id: string; parentId: string | null; order: number }
+    >();
+
+    for (const parentId of affectedParents) {
+      const siblings =
+        parentId === nextParentId
+          ? nextTargetSiblings
+          : orderedChildren(parentId).filter((d) => d.id !== draggingId);
+      siblings.forEach((d, order) => {
+        const parent = parentId;
+        if (d.parentId !== parent || d.order !== order || d.id === draggingId) {
+          updatesMap.set(d.id, { id: d.id, parentId: parent, order });
+        }
+      });
+    }
+
+    const ok = await reorder([...updatesMap.values()]);
+    if (!ok) toast.error("Couldn't move item. Check permissions and try again.");
+    else if (intent === "inside" && target) {
+      setExpanded((prev) => new Set(prev).add(target.id));
+    }
+  }
+
+  function clearDragState() {
+    setDraggingId(null);
+    setDropTarget(null);
+  }
 
   const iconBtn =
     "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted transition hover:bg-panel-hover hover:text-ink";
@@ -196,12 +293,44 @@ export default function Sidebar({ collapsed = false }: { collapsed?: boolean }) 
                   expanded={expanded}
                   toggle={toggle}
                   collapsed={collapsed}
+                  draggingId={draggingId}
+                  dropTarget={dropTarget}
+                  onDragStartDoc={(id) => setDraggingId(id)}
+                  onDragEndDoc={clearDragState}
+                  onDropDoc={(id, intent) => {
+                    void moveDoc(id, intent);
+                    clearDragState();
+                  }}
+                  onDragOverDoc={(id, intent) => setDropTarget({ id, intent })}
+                  onDragLeaveDoc={() => setDropTarget(null)}
                   onAddChild={(parentId, parentTitle) => {
                     setExpanded((prev) => new Set(prev).add(parentId));
                     openCreate({ parentId, parentTitle });
                   }}
                 />
               ))
+            )}
+            {!collapsed && roots.length > 0 && draggingId && (
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDropTarget({ id: null, intent: "root-end" });
+                }}
+                onDragLeave={() => setDropTarget(null)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  void moveDoc(null, "root-end");
+                  clearDragState();
+                }}
+                className={cn(
+                  "mx-1 mt-1 rounded-lg border border-dashed py-2 text-center text-[11px] transition",
+                  dropTarget?.intent === "root-end"
+                    ? "border-brand bg-brand-soft text-brand"
+                    : "border-transparent text-subtle"
+                )}
+              >
+                Drop here to move to workspace root
+              </div>
             )}
           </div>
         )}

@@ -22,6 +22,13 @@ import { buildDocPath } from "@/lib/doc-paths";
 import { confirmAction, toast } from "@/lib/ui-feedback";
 import { cn } from "@/lib/utils";
 
+type DropIntent = "before" | "after" | "inside" | "root-end";
+
+interface DropTarget {
+  id: string | null;
+  intent: DropIntent;
+}
+
 interface Props {
   doc: DocMeta;
   depth: number;
@@ -32,6 +39,13 @@ interface Props {
   collapsed?: boolean;
   /** Compact tree row inside collapsed sidebar flyout */
   flyout?: boolean;
+  draggingId?: string | null;
+  dropTarget?: DropTarget | null;
+  onDragStartDoc?: (id: string) => void;
+  onDragEndDoc?: () => void;
+  onDropDoc?: (id: string, intent: DropIntent) => void;
+  onDragOverDoc?: (id: string, intent: DropIntent) => void;
+  onDragLeaveDoc?: () => void;
 }
 
 function isOnActiveBranch(
@@ -58,6 +72,13 @@ export default function SidebarItem({
   onAddChild,
   collapsed = false,
   flyout = false,
+  draggingId = null,
+  dropTarget = null,
+  onDragStartDoc,
+  onDragEndDoc,
+  onDropDoc,
+  onDragOverDoc,
+  onDragLeaveDoc,
 }: Props) {
   const { docs, childrenOf, patchMeta, remove, canCreate } = useDocs();
   const router = useRouter();
@@ -192,6 +213,19 @@ export default function SidebarItem({
   const branchActive =
     isActive || isOnActiveBranch(doc.id, activeId, docs);
   const docImageIcon = isImage(doc.icon);
+  const isDragging = draggingId === doc.id;
+  const activeDrop = dropTarget?.id === doc.id ? dropTarget.intent : null;
+
+  function dragIntent(e: React.DragEvent<HTMLElement>): DropIntent {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = (e.clientY - rect.top) / Math.max(rect.height, 1);
+    if (doc.type === "folder") {
+      if (y < 0.25) return "before";
+      if (y > 0.75) return "after";
+      return "inside";
+    }
+    return y < 0.5 ? "before" : "after";
+  }
 
   if (collapsed && flyout) {
     return (
@@ -257,6 +291,13 @@ export default function SidebarItem({
                 collapsed
                 flyout
                 onAddChild={onAddChild}
+                draggingId={draggingId}
+                dropTarget={dropTarget}
+                onDragStartDoc={onDragStartDoc}
+                onDragEndDoc={onDragEndDoc}
+                onDropDoc={onDropDoc}
+                onDragOverDoc={onDragOverDoc}
+                onDragLeaveDoc={onDragLeaveDoc}
               />
             ))}
           </div>
@@ -322,6 +363,13 @@ export default function SidebarItem({
             collapsed
             flyout
             onAddChild={onAddChild}
+            draggingId={draggingId}
+            dropTarget={dropTarget}
+            onDragStartDoc={onDragStartDoc}
+            onDragEndDoc={onDragEndDoc}
+            onDropDoc={onDropDoc}
+            onDragOverDoc={onDragOverDoc}
+            onDragLeaveDoc={onDragLeaveDoc}
           />
         ))}
       </div>
@@ -356,14 +404,47 @@ export default function SidebarItem({
   return (
     <div>
       <div
+        draggable={!renaming && canCreate}
+        onDragStart={(e) => {
+          if (renaming || !canCreate) return;
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", doc.id);
+          onDragStartDoc?.(doc.id);
+        }}
+        onDragEnd={onDragEndDoc}
+        onDragOver={(e) => {
+          if (!draggingId || draggingId === doc.id) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onDragOverDoc?.(doc.id, dragIntent(e));
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+          onDragLeaveDoc?.();
+        }}
+        onDrop={(e) => {
+          if (!draggingId || draggingId === doc.id) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onDropDoc?.(doc.id, dragIntent(e));
+        }}
         className={cn(
           "group relative flex items-center gap-1 rounded-lg pr-1 transition",
+          canCreate && "cursor-grab active:cursor-grabbing",
+          isDragging && "opacity-45",
+          activeDrop === "inside" && "bg-brand-soft text-brand ring-1 ring-brand/40",
           isActive
             ? "bg-brand-soft text-brand"
             : "text-muted hover:bg-panel-hover hover:text-ink"
         )}
         style={{ paddingLeft: depth * 14 + 4 }}
       >
+        {activeDrop === "before" && (
+          <span className="absolute left-2 right-2 top-0 h-0.5 rounded-full bg-brand" />
+        )}
+        {activeDrop === "after" && (
+          <span className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full bg-brand" />
+        )}
         <button
           onClick={() => hasKids && toggle(doc.id)}
           className={cn(
@@ -502,6 +583,13 @@ export default function SidebarItem({
                 toggle={toggle}
                 collapsed={collapsed}
                 onAddChild={onAddChild}
+                draggingId={draggingId}
+                dropTarget={dropTarget}
+                onDragStartDoc={onDragStartDoc}
+                onDragEndDoc={onDragEndDoc}
+                onDropDoc={onDropDoc}
+                onDragOverDoc={onDragOverDoc}
+                onDragLeaveDoc={onDragLeaveDoc}
               />
             ))}
           </motion.div>
