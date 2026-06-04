@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Loader2, FileWarning } from "lucide-react";
-import type { Doc, DocMeta, DocStatus, ContentMode } from "@/lib/types";
+import type { Doc, DocFileMeta, DocMeta, DocStatus, ContentMode } from "@/lib/types";
 import { useDocs } from "./DocsProvider";
 import ShareModal from "./ShareModal";
 import DocEditor from "./DocEditor";
@@ -44,6 +44,7 @@ export default function DocView({ id }: { id: string }) {
   const [tags, setTags] = useState<string[]>([]);
   const [content, setContent] = useState("");
   const [contentMode, setContentMode] = useState<ContentMode>("html");
+  const [file, setFile] = useState<DocFileMeta | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,6 +72,7 @@ export default function DocView({ id }: { id: string }) {
     setTags(d.tags ?? []);
     setContent(d.content ?? "");
     setContentMode(d.contentMode ?? "html");
+    setFile(d.file ?? null);
     setEditing(false);
     setLoading(false);
     window.setTimeout(() => recordVisit(id), 0);
@@ -111,6 +113,7 @@ export default function DocView({ id }: { id: string }) {
       tags,
       content: contentMode === "url" ? normalizeExternalUrl(content)! : content,
       contentMode,
+      file,
     };
     const res = await fetch(`/api/docs/${id}`, {
       method: "PATCH",
@@ -186,6 +189,7 @@ export default function DocView({ id }: { id: string }) {
           tags={tagList}
           content={content}
           contentMode={contentMode}
+          file={file}
           updatedAt={doc.updatedAt}
           saving={saving}
           onTitle={setTitle}
@@ -195,6 +199,7 @@ export default function DocView({ id }: { id: string }) {
           onTags={setTags}
           onContent={setContent}
           onContentMode={setContentMode}
+          onFile={setFile}
           onCancel={() => load()}
           onSave={handleSave}
         />

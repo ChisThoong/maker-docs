@@ -8,6 +8,7 @@ import type {
   DocType,
   ContentMode,
   DocVisibility,
+  DocFileMeta,
 } from "./types";
 
 const COLLECTION = COL.documents;
@@ -24,6 +25,7 @@ interface DocRecord {
   tags: string[];
   content: string;
   contentMode: ContentMode;
+  file?: DocFileMeta | null;
   createdAt: string;
   updatedAt: string;
   createdBy?: string | null;
@@ -54,6 +56,7 @@ function toDoc(r: DocRecord): Doc {
     ...toMeta(r),
     content: r.content ?? "",
     contentMode: r.contentMode ?? "html",
+    file: r.file ?? null,
     publicId: r.publicId ?? null,
   };
 }
@@ -106,6 +109,7 @@ export interface CreateDocInput {
   tags?: string[];
   content?: string;
   contentMode?: ContentMode;
+  file?: DocFileMeta | null;
   subtitle?: string;
   createdBy?: string | null;
 }
@@ -134,6 +138,7 @@ export async function createDoc(input: CreateDocInput): Promise<Doc> {
     tags: input.tags ?? [],
     content: input.content ?? "",
     contentMode: input.contentMode ?? "html",
+    file: input.file ?? null,
     createdAt: now,
     updatedAt: now,
     createdBy: input.createdBy ?? null,
@@ -193,6 +198,7 @@ export type UpdateDocInput = Partial<
     | "tags"
     | "content"
     | "contentMode"
+    | "file"
   >
 >;
 

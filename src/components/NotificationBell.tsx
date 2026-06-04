@@ -6,6 +6,7 @@ import { Bell, Loader2, Share2 } from "lucide-react";
 import type { Notification } from "@/lib/notification-types";
 import { LEVEL_LABEL } from "@/lib/notification-types";
 import { cn, timeAgo } from "@/lib/utils";
+import Avatar from "./Avatar";
 
 export default function NotificationBell() {
   const router = useRouter();
@@ -125,9 +126,18 @@ export default function NotificationBell() {
                     !n.read && "bg-brand-soft/40"
                   )}
                 >
-                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand">
-                    <Share2 size={15} />
-                  </span>
+                  {n.sharedByImage ? (
+                    <Avatar
+                      name={n.sharedByName}
+                      src={n.sharedByImage}
+                      size={32}
+                      className="mt-0.5"
+                    />
+                  ) : (
+                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand">
+                      <Share2 size={15} />
+                    </span>
+                  )}
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm leading-snug text-ink">
                       <span className="font-medium">{n.sharedByName}</span> shared{" "}

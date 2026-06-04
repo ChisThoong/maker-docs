@@ -14,7 +14,24 @@ export type DocType =
   | "feature"
   | "doc";
 
-export type ContentMode = "html" | "markdown" | "url";
+export type ContentMode = "html" | "markdown" | "url" | "file";
+
+export type FileKind =
+  | "image"
+  | "pdf"
+  | "video"
+  | "audio"
+  | "office"
+  | "other";
+
+export interface DocFileMeta {
+  url: string;
+  name: string;
+  size: number;
+  mimeType: string;
+  kind: FileKind;
+  uploadedAt?: string;
+}
 
 /** "inherit" follows the parent; "restricted" hides the subtree from everyone
  * except explicit grantees, the owner, and workspace admins. */
@@ -39,6 +56,7 @@ export interface DocMeta {
 export interface Doc extends DocMeta {
   content: string;
   contentMode: ContentMode;
+  file?: DocFileMeta | null;
   publicId?: string | null;
 }
 

@@ -10,6 +10,7 @@ interface Row {
   name: string;
   role: string | null;
   jobPosition?: string | null;
+  image?: string | null;
 }
 
 export default function MembersSettingsPage() {
@@ -78,7 +79,7 @@ export default function MembersSettingsPage() {
             className="flex flex-col gap-2 border-b border-line px-5 py-3 last:border-b-0 lg:grid lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center lg:gap-6 lg:py-3"
           >
             <div className="flex min-w-0 items-center gap-3">
-              <Avatar name={r.name} size={34} />
+              <Avatar name={r.name} src={r.image} size={34} />
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium text-ink">{r.name}</div>
                 <div className="truncate text-[11px] text-subtle">{r.email}</div>

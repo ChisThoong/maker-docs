@@ -6,6 +6,7 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from "@/lib/notifications";
+import { getPersonDisplayMap } from "@/lib/profiles";
 
 export const dynamic = "force-dynamic";
 
@@ -17,8 +18,19 @@ export async function GET() {
     listNotifications(ctx.email),
     countUnread(ctx.email),
   ]);
+  const displayMap = await getPersonDisplayMap(
+    notifications.map((n) => n.sharedByEmail)
+  );
+  const enriched = notifications.map((n) => {
+    const display = displayMap.get(n.sharedByEmail.toLowerCase());
+    return {
+      ...n,
+      sharedByName: display?.displayName || n.sharedByName,
+      sharedByImage: display?.image ?? null,
+    };
+  });
 
-  return NextResponse.json({ notifications, unread });
+  return NextResponse.json({ notifications: enriched, unread });
 }
 
 export async function PATCH(req: NextRequest) {

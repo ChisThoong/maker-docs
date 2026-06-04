@@ -26,6 +26,7 @@ interface MemberLite {
   email: string;
   name: string;
   role: string | null;
+  image?: string | null;
 }
 
 const LEVELS: { value: AccessLevel; label: string }[] = [
@@ -402,7 +403,7 @@ export default function ShareModal({
                           onClick={() => addUser(m)}
                           className="flex w-full items-center gap-2 px-2.5 py-2 text-left transition hover:bg-panel-hover"
                         >
-                          <Avatar name={m.name} size={26} />
+                          <Avatar name={m.name} src={m.image} size={26} />
                           <span className="min-w-0">
                             <span className="block truncate text-sm text-ink">{m.name}</span>
                             <span className="block truncate text-[11px] text-subtle">{m.email}</span>

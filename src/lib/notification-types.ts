@@ -9,6 +9,7 @@ export interface Notification {
   docPath: string;
   sharedByEmail: string;
   sharedByName: string;
+  sharedByImage?: string | null;
   level: AccessLevel;
   read: boolean;
   createdAt: string;

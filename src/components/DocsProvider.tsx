@@ -8,7 +8,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import type { DocMeta } from "@/lib/types";
+import type { ContentMode, DocFileMeta, DocMeta } from "@/lib/types";
 
 interface CreateInput {
   title?: string;
@@ -18,6 +18,8 @@ interface CreateInput {
   icon?: string;
   tags?: string[];
   content?: string;
+  contentMode?: ContentMode;
+  file?: DocFileMeta | null;
   subtitle?: string;
 }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, FileWarning, Lock } from "lucide-react";
-import type { ContentMode } from "@/lib/types";
+import type { ContentMode, DocFileMeta } from "@/lib/types";
 import {
   DOC_IFRAME_SANDBOX,
   externalEmbedSrc,
@@ -30,6 +30,7 @@ export default function DocReader({
 }) {
   const [content, setContent] = useState("");
   const [contentMode, setContentMode] = useState<ContentMode>("html");
+  const [file, setFile] = useState<DocFileMeta | null>(null);
   const [state, setState] = useState<State>("loading");
 
   useEffect(() => {
@@ -42,6 +43,7 @@ export default function DocReader({
       if (!res.ok || !data?.doc) return setState("notfound");
       setContent(data.doc.content ?? "");
       setContentMode(data.doc.contentMode ?? "html");
+      setFile(data.doc.file ?? null);
       setState("ok");
     })();
   }, [id, token]);
@@ -79,6 +81,73 @@ export default function DocReader({
             ? "You do not have permission to view this document."
             : "Document not found."}
         </p>
+      </div>
+    );
+  }
+
+  if (contentMode === "file") {
+    if (!file) {
+      return (
+        <div style={{ ...pageCenter, color: "#6b7280" }}>
+          File metadata is missing.
+        </div>
+      );
+    }
+    return (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          width: "100vw",
+          height: "100dvh",
+          background: "#060a14",
+          color: "#e2e8f0",
+          display: "grid",
+          gridTemplateRows: "auto 1fr",
+          fontFamily: "system-ui, sans-serif",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "10px 14px",
+            borderBottom: "1px solid #1f2937",
+            background: "#0b1020",
+          }}
+        >
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {file.name}
+            </div>
+            <div style={{ color: "#94a3b8", fontSize: 12 }}>{file.mimeType}</div>
+          </div>
+          <a href={file.url} target="_blank" rel="noopener noreferrer" style={{ color: "#93c5fd", fontSize: 13 }}>
+            Open
+          </a>
+          <a href={file.url} download style={{ color: "#93c5fd", fontSize: 13 }}>
+            Download
+          </a>
+        </div>
+        <div style={{ minHeight: 0, overflow: "auto" }}>
+          {file.kind === "image" ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={file.url} alt={file.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+          ) : file.kind === "video" ? (
+            <video src={file.url} controls style={{ width: "100%", height: "100%", background: "#000" }} />
+          ) : file.kind === "audio" ? (
+            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+              <audio src={file.url} controls style={{ width: "min(640px, 100%)" }} />
+            </div>
+          ) : file.kind === "pdf" ? (
+            <iframe src={file.url} title={file.name} style={{ width: "100%", height: "100%", border: 0 }} />
+          ) : (
+            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8" }}>
+              Preview is not available for this file type. Open or download the file.
+            </div>
+          )}
+        </div>
       </div>
     );
   }

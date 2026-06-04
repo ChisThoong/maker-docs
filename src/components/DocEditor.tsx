@@ -16,16 +16,20 @@ import {
   ImageIcon,
   FileText,
   Link2,
+  FileUp,
 } from "lucide-react";
-import type { DocStatus, ContentMode } from "@/lib/types";
+import type { DocFileMeta, DocStatus, ContentMode } from "@/lib/types";
 import IconPicker from "./IconPicker";
 import StatusSelect from "./StatusSelect";
 import HtmlSourceEditor from "./HtmlSourceEditor";
 import DocContentFrame from "./DocContentFrame";
+import FilePreview from "./FilePreview";
 import { HTML_GEN_PROMPT } from "@/lib/html-gen-prompt";
 import { cn, timeAgo } from "@/lib/utils";
 import { normalizeExternalUrl } from "@/lib/content-embed";
 import { confirmAction, toast } from "@/lib/ui-feedback";
+import { uploadFile } from "@/lib/upload";
+import { iconForFileKind, makeFileMeta, formatFileSize } from "@/lib/file-content";
 
 const FILE_IMPORT_ENABLED = false;
 
@@ -68,6 +72,7 @@ interface Props {
   tags: string[];
   content: string;
   contentMode: ContentMode;
+  file: DocFileMeta | null;
   updatedAt: string;
   saving: boolean;
   onTitle: (v: string) => void;
@@ -77,6 +82,7 @@ interface Props {
   onTags: (v: string[]) => void;
   onContent: (v: string) => void;
   onContentMode: (v: ContentMode) => void;
+  onFile: (v: DocFileMeta | null) => void;
   onCancel: () => void;
   onSave: () => void;
 }
@@ -89,6 +95,7 @@ export default function DocEditor({
   tags,
   content,
   contentMode,
+  file,
   updatedAt,
   saving,
   onTitle,
@@ -98,6 +105,7 @@ export default function DocEditor({
   onTags,
   onContent,
   onContentMode,
+  onFile,
   onCancel,
   onSave,
 }: Props) {
@@ -110,11 +118,13 @@ export default function DocEditor({
   const [pickedFiles, setPickedFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<Record<string, string>>({});
   const [wrap, setWrap] = useState(true);
+  const [fileUploading, setFileUploading] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const tagLock = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const isUrlMode = contentMode === "url";
+  const isFileMode = contentMode === "file";
   const externalUrl = normalizeExternalUrl(content);
 
   function selectImportMode(mode: ImportMode) {
@@ -128,11 +138,31 @@ export default function DocEditor({
     }
   }
 
+  async function replaceUploadedFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const next = e.target.files?.[0];
+    e.target.value = "";
+    if (!next || fileUploading) return;
+    setFileUploading(true);
+    try {
+      const url = await uploadFile(next);
+      const meta = makeFileMeta(next, url);
+      onFile(meta);
+      onContent(url);
+      onContentMode("file");
+      onIcon(iconForFileKind(meta.kind));
+      toast.success("File uploaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setFileUploading(false);
+    }
+  }
+
   const tabs: { id: EditTab; label: string; icon: typeof Code2 }[] = [
     {
       id: "source",
-      label: isUrlMode ? "URL" : "HTML Source",
-      icon: isUrlMode ? Link2 : Code2,
+      label: isFileMode ? "File" : isUrlMode ? "URL" : "HTML Source",
+      icon: isFileMode ? FileUp : isUrlMode ? Link2 : Code2,
     },
     { id: "preview", label: "Preview", icon: Eye },
   ];
@@ -297,6 +327,42 @@ export default function DocEditor({
 
   function renderEditorBody(className?: string) {
     if (tab === "source") {
+      if (isFileMode) {
+        return (
+          <div className={cn("flex flex-col gap-4 p-5", className)}>
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-subtle">
+                Uploaded file
+              </label>
+              {file ? (
+                <div className="mt-2 rounded-xl border border-line bg-panel-2 px-3 py-2 text-sm">
+                  <div className="truncate font-medium text-ink">{file.name}</div>
+                  <div className="mt-0.5 text-xs text-subtle">
+                    {file.mimeType} · {formatFileSize(file.size)}
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-subtle">No file metadata found.</p>
+              )}
+            </div>
+            <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-xl border border-dashed border-line-strong bg-panel-2 px-4 py-2 text-sm font-medium text-ink transition hover:border-brand/50 hover:bg-brand-soft">
+              {fileUploading ? (
+                <Loader2 size={16} className="animate-spin text-brand" />
+              ) : (
+                <FileUp size={16} className="text-brand" />
+              )}
+              {fileUploading ? "Uploading…" : "Replace file"}
+              <input
+                type="file"
+                className="hidden"
+                onChange={replaceUploadedFile}
+                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+              />
+            </label>
+          </div>
+        );
+      }
+
       if (isUrlMode) {
         return (
           <div className={cn("flex flex-col gap-3 p-5", className)}>
@@ -336,14 +402,18 @@ export default function DocEditor({
 
     return (
       <div className={cn("relative min-h-0 overflow-hidden", className)}>
-        <DocContentFrame
-          content={content}
-          contentMode={contentMode}
-          title="Preview"
-          fill
-          showUrlBar={isUrlMode}
-          className="h-full"
-        />
+        {isFileMode && file ? (
+          <FilePreview file={file} title={title} compact className="h-full rounded-none border-0" />
+        ) : (
+          <DocContentFrame
+            content={content}
+            contentMode={contentMode}
+            title="Preview"
+            fill
+            showUrlBar={isUrlMode}
+            className="h-full"
+          />
+        )}
       </div>
     );
   }
@@ -507,7 +577,7 @@ export default function DocEditor({
               ))}
 
               <div className="ml-auto flex items-center gap-2 pb-1 pr-1">
-                {tab === "source" && (
+                {tab === "source" && !isFileMode && (
                   <div className="flex rounded-lg border border-line bg-panel-2 p-0.5">
                     <button
                       type="button"
@@ -535,7 +605,7 @@ export default function DocEditor({
                     </button>
                   </div>
                 )}
-                {tab === "source" && !isUrlMode && (
+                {tab === "source" && !isUrlMode && !isFileMode && (
                   <button
                     type="button"
                     onClick={copyHtmlPrompt}
@@ -546,7 +616,7 @@ export default function DocEditor({
                     Copy prompt
                   </button>
                 )}
-                {tab === "source" && !isUrlMode && (
+                {tab === "source" && !isUrlMode && !isFileMode && (
                   <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
                     <span>Wrap</span>
                     <button

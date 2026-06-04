@@ -18,6 +18,7 @@ import { sanitizeHtml } from "@/lib/sanitize";
 import DocIcon, { isImage } from "./DocIcon";
 import StatusBadge from "./StatusBadge";
 import DocContentFrame from "./DocContentFrame";
+import FilePreview from "./FilePreview";
 import { cn, timeAgo } from "@/lib/utils";
 
 interface DocAccess {
@@ -55,7 +56,8 @@ export default function DocReadView({
   const router = useRouter();
   const [activeSection, setActiveSection] = useState<string>("");
   const parentDoc = breadcrumb.at(-1);
-  const isPreviewDoc = doc.contentMode === "html" || doc.contentMode === "url";
+  const isPreviewDoc =
+    doc.contentMode === "html" || doc.contentMode === "url" || doc.contentMode === "file";
   const imageIcon = isImage(doc.icon);
 
   function goBack() {
@@ -253,7 +255,30 @@ export default function DocReadView({
             </header>
 
             {/* Content */}
-            {isPreviewDoc ? (
+            {doc.contentMode === "file" ? (
+              doc.file ? (
+                <div className="doc-view-content mt-5 min-h-0 flex-1 animate-fade-up overflow-hidden">
+                  <FilePreview
+                    file={doc.file}
+                    title={doc.title}
+                    compact
+                    className="h-full min-h-0"
+                  />
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-line p-10 text-center text-subtle">
+                  File metadata is missing. Click{" "}
+                  <button
+                    type="button"
+                    onClick={onEdit}
+                    className="font-medium text-brand hover:underline"
+                  >
+                    Edit
+                  </button>{" "}
+                  to replace the file.
+                </div>
+              )
+            ) : isPreviewDoc ? (
               doc.content?.trim() ? (
                 <div className="doc-view-content mt-5 min-h-0 flex-1 animate-fade-up overflow-hidden rounded-2xl border border-line">
                   <DocContentFrame

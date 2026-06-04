@@ -3,7 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { X } from "lucide-react";
+import { FileUp, Loader2, X } from "lucide-react";
 import {
   DEFAULT_TEMPLATE_KEY,
   TEMPLATES,
@@ -12,6 +12,14 @@ import {
 import { useDocs } from "./DocsProvider";
 import DocIcon from "./DocIcon";
 import { cn } from "@/lib/utils";
+import { uploadFile } from "@/lib/upload";
+import {
+  iconForFileKind,
+  makeFileMeta,
+  titleFromFilename,
+  formatFileSize,
+} from "@/lib/file-content";
+import type { DocFileMeta } from "@/lib/types";
 
 interface CreateState {
   open: boolean;
@@ -60,25 +68,60 @@ export default function CreateDocModal() {
   const { create } = useDocs();
   const router = useRouter();
   const [title, setTitle] = useState("");
-  const [kind, setKind] = useState<Template["key"]>(DEFAULT_TEMPLATE_KEY);
+  const [kind, setKind] = useState<Template["key"] | "file">(DEFAULT_TEMPLATE_KEY);
   const [busy, setBusy] = useState(false);
+  const [pickedFile, setPickedFile] = useState<File | null>(null);
+  const [fileErr, setFileErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
       setTitle("");
       setKind(template ?? DEFAULT_TEMPLATE_KEY);
+      setPickedFile(null);
+      setFileErr(null);
     }
   }, [open, template]);
 
-  const selected = TEMPLATES.find((t) => t.key === kind) ?? TEMPLATES[1];
+  const selected =
+    kind === "file" ? null : TEMPLATES.find((t) => t.key === kind) ?? TEMPLATES[1];
+
+  function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    e.target.value = "";
+    setFileErr(null);
+    setPickedFile(file);
+    if (file && !title.trim()) setTitle(titleFromFilename(file.name));
+  }
 
   async function handleCreate() {
+    if (busy) return;
     setBusy(true);
+    let fileMeta: DocFileMeta | null = null;
+    if (kind === "file") {
+      if (!pickedFile) {
+        setFileErr("Choose a file to upload.");
+        setBusy(false);
+        return;
+      }
+      try {
+        const url = await uploadFile(pickedFile);
+        fileMeta = makeFileMeta(pickedFile, url);
+      } catch (e) {
+        setFileErr(e instanceof Error ? e.message : "Upload failed");
+        setBusy(false);
+        return;
+      }
+    }
+
     const doc = await create({
-      title: title.trim() || selected.label,
-      type: selected.type,
-      icon: selected.icon,
-      content: selected.content,
+      title:
+        title.trim() ||
+        (kind === "file" && pickedFile ? titleFromFilename(pickedFile.name) : selected?.label),
+      type: selected?.type ?? "doc",
+      icon: fileMeta ? iconForFileKind(fileMeta.kind) : selected?.icon,
+      content: fileMeta?.url ?? selected?.content,
+      contentMode: fileMeta ? "file" : "html",
+      file: fileMeta,
       parentId,
     });
     setBusy(false);
@@ -134,6 +177,8 @@ export default function CreateDocModal() {
                 placeholder={
                   kind === "folder"
                     ? "e.g. Design, Features, Assets…"
+                    : kind === "file"
+                      ? "Defaults to uploaded file name"
                     : "e.g. Drop Simulator, Character Spec…"
                 }
                 className="mb-4 w-full rounded-xl border border-line bg-panel-2 px-3.5 py-2.5 text-sm text-ink outline-none transition focus:border-brand focus:bg-panel focus:ring-4 focus:ring-[var(--ring)]"
@@ -164,7 +209,48 @@ export default function CreateDocModal() {
                     </span>
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => setKind("file")}
+                  className={cn(
+                    "flex flex-col items-start gap-1.5 rounded-xl border p-3 text-left transition",
+                    kind === "file"
+                      ? "border-brand bg-brand-soft ring-2 ring-[var(--ring)]"
+                      : "border-line bg-panel hover:border-line-strong hover:bg-panel-hover"
+                  )}
+                >
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-panel-2 text-muted">
+                    <FileUp size={18} />
+                  </span>
+                  <span className="text-sm font-medium text-ink">File upload</span>
+                  <span className="text-[11px] leading-snug text-subtle">
+                    PDF, image, video, Word, Excel, PPT
+                  </span>
+                </button>
               </div>
+              {kind === "file" && (
+                <div className="mt-4 rounded-xl border border-dashed border-line-strong bg-panel-2 p-3">
+                  <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-panel px-3 py-2 text-sm font-medium text-ink transition hover:bg-panel-hover">
+                    <FileUp size={15} className="text-brand" />
+                    Choose file
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={onPickFile}
+                      accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+                    />
+                  </label>
+                  {pickedFile && (
+                    <div className="mt-2 rounded-lg border border-line bg-panel px-3 py-2 text-xs">
+                      <div className="truncate font-medium text-ink">{pickedFile.name}</div>
+                      <div className="mt-0.5 text-subtle">
+                        {pickedFile.type || "Unknown type"} · {formatFileSize(pickedFile.size)}
+                      </div>
+                    </div>
+                  )}
+                  {fileErr && <p className="mt-2 text-xs text-rose-500">{fileErr}</p>}
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-2 border-t border-line bg-panel-2 px-5 py-3.5">
@@ -177,11 +263,16 @@ export default function CreateDocModal() {
                 disabled={busy}
                 className="btn-primary"
               >
-                {busy
-                  ? "Creating…"
-                  : kind === "folder"
+                {busy ? (
+                  <>
+                    <Loader2 size={15} className="animate-spin" />
+                    {kind === "file" ? "Uploading…" : "Creating…"}
+                  </>
+                ) : kind === "folder"
                     ? "Create folder"
-                    : "Create document"}
+                    : kind === "file"
+                      ? "Upload file"
+                      : "Create document"}
               </button>
             </div>
           </motion.div>

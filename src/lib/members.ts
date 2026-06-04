@@ -4,12 +4,14 @@ import {
   formatJobPositionLabel,
   type JobPositionOption,
 } from "./job-positions";
+import { getPersonDisplayMap, type PersonDisplay } from "./profiles";
 
 export interface MemberLite {
   email: string;
   name: string;
   role: string | null;
   jobPosition?: string | null;
+  image?: string | null;
 }
 
 interface MemberDoc {
@@ -27,13 +29,19 @@ function fullName(m: MemberDoc): string {
   return n || m.email;
 }
 
-function toLite(m: MemberDoc): MemberLite {
+function toLite(m: MemberDoc, display?: PersonDisplay): MemberLite {
   return {
     email: m.email,
-    name: fullName(m),
+    name: display?.displayName || fullName(m),
     role: m.role ?? null,
     jobPosition: m.jobPosition ?? null,
+    image: display?.image ?? null,
   };
+}
+
+async function enrichMembers(rows: MemberDoc[]): Promise<MemberLite[]> {
+  const displayMap = await getPersonDisplayMap(rows.map((r) => r.email));
+  return rows.map((r) => toLite(r, displayMap.get(r.email.toLowerCase())));
 }
 
 /** Search shared `members` (read-only) by name or email. */
@@ -70,7 +78,7 @@ export async function searchMembers(
     })
     .limit(limit)
     .toArray();
-  return rows.map(toLite);
+  return enrichMembers(rows);
 }
 
 export async function listMembers(): Promise<MemberLite[]> {
@@ -93,7 +101,7 @@ export async function listMembers(): Promise<MemberLite[]> {
     .sort({ firstName: 1 })
     .limit(500)
     .toArray();
-  return rows.map(toLite);
+  return enrichMembers(rows);
 }
 
 /** Distinct job positions from active members, for ACL grants. */

@@ -20,7 +20,7 @@ import {
   Star,
   Loader2,
 } from "lucide-react";
-import DocIcon from "@/components/DocIcon";
+import DocIcon, { isImage } from "@/components/DocIcon";
 import StatusBadge from "@/components/StatusBadge";
 import Avatar from "@/components/Avatar";
 import { openCreate } from "@/components/CreateDocModal";
@@ -34,6 +34,7 @@ interface DashboardActivity {
   docTitle: string;
   docPath: string;
   actorName: string;
+  actorImage?: string | null;
   verb: string;
   createdAt: string;
 }
@@ -47,7 +48,7 @@ interface DashboardData {
     newThisMonth: number;
   };
   health: { design: number; impl: number; qa: number };
-  recent: (DocMeta & { authorName: string })[];
+  recent: (DocMeta & { authorName: string; authorImage?: string | null })[];
   favorites: DocMeta[];
   recentViews: DocMeta[];
   activity: DashboardActivity[];
@@ -240,18 +241,7 @@ export default function HomePage() {
         >
           <div className="flex flex-wrap gap-2.5">
             {recents.slice(0, 8).map((d) => (
-              <Link
-                key={d.id}
-                href={`/doc/${d.id}`}
-                className="flex w-44 items-center gap-2.5 rounded-xl border border-line bg-panel px-3 py-2.5 transition hover:border-line-strong hover:bg-panel-hover"
-              >
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-panel-2 text-muted">
-                  <DocIcon icon={d.icon} fallback={TYPE_META[d.type].icon} size={16} />
-                </span>
-                <span className="truncate text-sm font-medium text-ink">
-                  {d.title}
-                </span>
-              </Link>
+              <RecentDocPill key={d.id} doc={d} />
             ))}
           </div>
         </Section>
@@ -263,7 +253,13 @@ export default function HomePage() {
           <Section title="Recently updated" icon={<Clock size={15} />}>
             <div className="grid gap-3 sm:grid-cols-2">
               {recent.map((d, i) => (
-                <DocCard key={d.id} doc={d} authorName={d.authorName} i={i} />
+                <DocCard
+                  key={d.id}
+                  doc={d}
+                  authorName={d.authorName}
+                  authorImage={d.authorImage}
+                  i={i}
+                />
               ))}
             </div>
           </Section>
@@ -367,25 +363,63 @@ function ActionCard({
   );
 }
 
+function RecentDocPill({ doc }: { doc: DocMeta }) {
+  const imageIcon = isImage(doc.icon);
+  return (
+    <Link
+      href={`/doc/${doc.id}`}
+      className="flex w-44 items-center gap-2.5 rounded-xl border border-line bg-panel px-3 py-2.5 transition hover:border-line-strong hover:bg-panel-hover"
+    >
+      <span
+        className={cn(
+          "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-panel-2 text-muted",
+          imageIcon && "overflow-hidden !rounded-md p-0"
+        )}
+      >
+        <DocIcon
+          icon={doc.icon}
+          fallback={TYPE_META[doc.type].icon}
+          size={imageIcon ? 32 : 16}
+          className={imageIcon ? "!rounded-md" : undefined}
+        />
+      </span>
+      <span className="truncate text-sm font-medium text-ink">{doc.title}</span>
+    </Link>
+  );
+}
+
 function DocCard({
   doc,
   authorName,
+  authorImage,
   i,
   compact,
 }: {
   doc: DocMeta;
   authorName?: string;
+  authorImage?: string | null;
   i: number;
   compact?: boolean;
 }) {
+  const imageIcon = isImage(doc.icon);
   return (
     <motion.div custom={i} variants={fade} initial="hidden" animate="show">
       <Link
         href={`/doc/${doc.id}`}
         className="group flex items-start gap-3 rounded-2xl border border-line bg-panel p-4 transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-[var(--shadow-md)]"
       >
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-panel-2 text-muted">
-          <DocIcon icon={doc.icon} fallback={TYPE_META[doc.type].icon} size={20} />
+        <span
+          className={cn(
+            "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-panel-2 text-muted",
+            imageIcon && "overflow-hidden !rounded-lg p-0"
+          )}
+        >
+          <DocIcon
+            icon={doc.icon}
+            fallback={TYPE_META[doc.type].icon}
+            size={imageIcon ? 40 : 20}
+            className={imageIcon ? "!rounded-lg" : undefined}
+          />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -399,7 +433,7 @@ function DocCard({
           </div>
           {!compact && authorName && (
             <div className="mt-3 flex items-center gap-2 border-t border-line pt-2.5">
-              <Avatar name={authorName} size={20} />
+              <Avatar name={authorName} src={authorImage} size={20} />
               <span className="text-xs text-muted">{authorName}</span>
             </div>
           )}
@@ -460,7 +494,7 @@ function ActivityCard({ activity }: { activity: DashboardActivity[] }) {
       <div className="mt-4 space-y-4">
         {activity.slice(0, 5).map((a) => (
           <div key={a.id} className="flex items-start gap-3">
-            <Avatar name={a.actorName} size={28} />
+            <Avatar name={a.actorName} src={a.actorImage} size={28} />
             <div className="min-w-0 flex-1 text-sm">
               <p className="leading-snug text-muted">
                 <span className="font-medium text-ink">{a.actorName}</span>{" "}
