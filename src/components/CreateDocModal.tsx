@@ -3,7 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { FileUp, Loader2, X } from "lucide-react";
+import { FileUp, Loader2, X, Film } from "lucide-react";
 import {
   DEFAULT_TEMPLATE_KEY,
   TEMPLATES,
@@ -12,7 +12,7 @@ import {
 import { useDocs } from "./DocsProvider";
 import DocIcon from "./DocIcon";
 import { cn } from "@/lib/utils";
-import { uploadFile } from "@/lib/upload";
+import { uploadFile, uploadSpineBundle } from "@/lib/upload";
 import {
   iconForFileKind,
   makeFileMeta,
@@ -20,6 +20,8 @@ import {
   formatFileSize,
 } from "@/lib/file-content";
 import type { DocFileMeta } from "@/lib/types";
+import type { SpineBundleMeta } from "@/lib/types";
+import { spineTitleFromFiles, validateSpineFiles } from "@/lib/spine-content";
 
 interface CreateState {
   open: boolean;
@@ -68,9 +70,10 @@ export default function CreateDocModal() {
   const { create } = useDocs();
   const router = useRouter();
   const [title, setTitle] = useState("");
-  const [kind, setKind] = useState<Template["key"] | "file">(DEFAULT_TEMPLATE_KEY);
+  const [kind, setKind] = useState<Template["key"] | "file" | "spine">(DEFAULT_TEMPLATE_KEY);
   const [busy, setBusy] = useState(false);
   const [pickedFile, setPickedFile] = useState<File | null>(null);
+  const [spineFiles, setSpineFiles] = useState<File[]>([]);
   const [fileErr, setFileErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -78,6 +81,7 @@ export default function CreateDocModal() {
       setTitle("");
       setKind(template ?? DEFAULT_TEMPLATE_KEY);
       setPickedFile(null);
+      setSpineFiles([]);
       setFileErr(null);
     }
   }, [open, template]);
@@ -93,10 +97,19 @@ export default function CreateDocModal() {
     if (file && !title.trim()) setTitle(titleFromFilename(file.name));
   }
 
+  function onPickSpineFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    setFileErr(validateSpineFiles(files));
+    setSpineFiles(files);
+    if (files.length && !title.trim()) setTitle(spineTitleFromFiles(files));
+  }
+
   async function handleCreate() {
     if (busy) return;
     setBusy(true);
     let fileMeta: DocFileMeta | null = null;
+    let spineMeta: SpineBundleMeta | null = null;
     if (kind === "file") {
       if (!pickedFile) {
         setFileErr("Choose a file to upload.");
@@ -112,16 +125,40 @@ export default function CreateDocModal() {
         return;
       }
     }
+    if (kind === "spine") {
+      const validation = validateSpineFiles(spineFiles);
+      if (validation) {
+        setFileErr(validation);
+        setBusy(false);
+        return;
+      }
+      try {
+        const bundle = await uploadSpineBundle(spineFiles);
+        spineMeta = {
+          ...bundle,
+          name: title.trim() || spineTitleFromFiles(spineFiles),
+        };
+      } catch (e) {
+        setFileErr(e instanceof Error ? e.message : "Spine bundle upload failed");
+        setBusy(false);
+        return;
+      }
+    }
 
     const doc = await create({
       title:
         title.trim() ||
-        (kind === "file" && pickedFile ? titleFromFilename(pickedFile.name) : selected?.label),
+        (kind === "file" && pickedFile
+          ? titleFromFilename(pickedFile.name)
+          : kind === "spine"
+            ? spineTitleFromFiles(spineFiles)
+            : selected?.label),
       type: selected?.type ?? "doc",
-      icon: fileMeta ? iconForFileKind(fileMeta.kind) : selected?.icon,
-      content: fileMeta?.url ?? selected?.content,
-      contentMode: fileMeta ? "file" : "html",
+      icon: spineMeta ? "lucide:film" : fileMeta ? iconForFileKind(fileMeta.kind) : selected?.icon,
+      content: spineMeta?.jsonUrl ?? fileMeta?.url ?? selected?.content,
+      contentMode: spineMeta ? "spine" : fileMeta ? "file" : "html",
       file: fileMeta,
+      spine: spineMeta,
       parentId,
     });
     setBusy(false);
@@ -179,6 +216,8 @@ export default function CreateDocModal() {
                     ? "e.g. Design, Features, Assets…"
                     : kind === "file"
                       ? "Defaults to uploaded file name"
+                      : kind === "spine"
+                        ? "Defaults to Spine JSON name"
                     : "e.g. Drop Simulator, Character Spec…"
                 }
                 className="mb-4 w-full rounded-xl border border-line bg-panel-2 px-3.5 py-2.5 text-sm text-ink outline-none transition focus:border-brand focus:bg-panel focus:ring-4 focus:ring-[var(--ring)]"
@@ -227,6 +266,24 @@ export default function CreateDocModal() {
                     PDF, image, video, Word, Excel, PPT
                   </span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setKind("spine")}
+                  className={cn(
+                    "flex flex-col items-start gap-1.5 rounded-xl border p-3 text-left transition",
+                    kind === "spine"
+                      ? "border-brand bg-brand-soft ring-2 ring-[var(--ring)]"
+                      : "border-line bg-panel hover:border-line-strong hover:bg-panel-hover"
+                  )}
+                >
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-panel-2 text-muted">
+                    <Film size={18} />
+                  </span>
+                  <span className="text-sm font-medium text-ink">Spine Bundle</span>
+                  <span className="text-[11px] leading-snug text-subtle">
+                    Upload .json/.atlas/textures and preview animation
+                  </span>
+                </button>
               </div>
               {kind === "file" && (
                 <div className="mt-4 rounded-xl border border-dashed border-line-strong bg-panel-2 p-3">
@@ -251,6 +308,32 @@ export default function CreateDocModal() {
                   {fileErr && <p className="mt-2 text-xs text-rose-500">{fileErr}</p>}
                 </div>
               )}
+              {kind === "spine" && (
+                <div className="mt-4 rounded-xl border border-dashed border-line-strong bg-panel-2 p-3">
+                  <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-panel px-3 py-2 text-sm font-medium text-ink transition hover:bg-panel-hover">
+                    <Film size={15} className="text-brand" />
+                    Choose Spine files
+                    <input
+                      type="file"
+                      className="hidden"
+                      multiple
+                      onChange={onPickSpineFiles}
+                      accept=".json,.skel,.atlas,image/png,image/webp,image/jpeg"
+                    />
+                  </label>
+                  {spineFiles.length > 0 && (
+                    <div className="mt-2 max-h-28 space-y-1 overflow-y-auto rounded-lg border border-line bg-panel px-3 py-2 text-xs">
+                      {spineFiles.map((f) => (
+                        <div key={`${f.name}-${f.size}`} className="flex justify-between gap-2">
+                          <span className="truncate text-ink">{f.name}</span>
+                          <span className="shrink-0 text-subtle">{formatFileSize(f.size)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {fileErr && <p className="mt-2 text-xs text-rose-500">{fileErr}</p>}
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-2 border-t border-line bg-panel-2 px-5 py-3.5">
@@ -266,12 +349,14 @@ export default function CreateDocModal() {
                 {busy ? (
                   <>
                     <Loader2 size={15} className="animate-spin" />
-                    {kind === "file" ? "Uploading…" : "Creating…"}
+                    {kind === "file" || kind === "spine" ? "Uploading…" : "Creating…"}
                   </>
                 ) : kind === "folder"
                     ? "Create folder"
                     : kind === "file"
                       ? "Upload file"
+                      : kind === "spine"
+                        ? "Upload Spine"
                       : "Create document"}
               </button>
             </div>

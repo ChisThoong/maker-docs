@@ -17,24 +17,27 @@ import {
   FileText,
   Link2,
   FileUp,
+  Film,
 } from "lucide-react";
-import type { DocFileMeta, DocStatus, ContentMode } from "@/lib/types";
+import type { DocFileMeta, DocStatus, ContentMode, SpineBundleMeta } from "@/lib/types";
 import IconPicker from "./IconPicker";
 import StatusSelect from "./StatusSelect";
 import HtmlSourceEditor from "./HtmlSourceEditor";
 import DocContentFrame from "./DocContentFrame";
 import FilePreview from "./FilePreview";
+import SpinePreview from "./SpinePreview";
 import { HTML_GEN_PROMPT } from "@/lib/html-gen-prompt";
 import { cn, timeAgo } from "@/lib/utils";
 import { normalizeExternalUrl } from "@/lib/content-embed";
 import { confirmAction, toast } from "@/lib/ui-feedback";
-import { uploadFile } from "@/lib/upload";
+import { uploadFile, uploadSpineBundle } from "@/lib/upload";
 import { iconForFileKind, makeFileMeta, formatFileSize } from "@/lib/file-content";
+import { spineTitleFromFiles, validateSpineFiles } from "@/lib/spine-content";
 
 const FILE_IMPORT_ENABLED = false;
 
 type EditTab = "source" | "preview";
-type ImportMode = "source" | "url" | "file";
+type ImportMode = "source" | "url" | "file" | "spine";
 type ImportPhase = "idle" | "loading" | "success" | "error";
 
 function isHtmlFile(name: string): boolean {
@@ -73,6 +76,7 @@ interface Props {
   content: string;
   contentMode: ContentMode;
   file: DocFileMeta | null;
+  spine: SpineBundleMeta | null;
   updatedAt: string;
   saving: boolean;
   onTitle: (v: string) => void;
@@ -83,6 +87,7 @@ interface Props {
   onContent: (v: string) => void;
   onContentMode: (v: ContentMode) => void;
   onFile: (v: DocFileMeta | null) => void;
+  onSpine: (v: SpineBundleMeta | null) => void;
   onCancel: () => void;
   onSave: () => void;
 }
@@ -96,6 +101,7 @@ export default function DocEditor({
   content,
   contentMode,
   file,
+  spine,
   updatedAt,
   saving,
   onTitle,
@@ -106,12 +112,19 @@ export default function DocEditor({
   onContent,
   onContentMode,
   onFile,
+  onSpine,
   onCancel,
   onSave,
 }: Props) {
   const [tab, setTab] = useState<EditTab>("source");
   const [importMode, setImportMode] = useState<ImportMode>(
-    contentMode === "url" ? "url" : "source"
+    contentMode === "spine"
+      ? "spine"
+      : contentMode === "file"
+        ? "file"
+        : contentMode === "url"
+          ? "url"
+          : "source"
   );
   const [importPhase, setImportPhase] = useState<ImportPhase>("idle");
   const [importMessage, setImportMessage] = useState("");
@@ -119,12 +132,14 @@ export default function DocEditor({
   const [imagePreviews, setImagePreviews] = useState<Record<string, string>>({});
   const [wrap, setWrap] = useState(true);
   const [fileUploading, setFileUploading] = useState(false);
+  const [spineUploading, setSpineUploading] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const tagLock = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const isUrlMode = contentMode === "url";
   const isFileMode = contentMode === "file";
+  const isSpineMode = contentMode === "spine";
   const externalUrl = normalizeExternalUrl(content);
 
   function selectImportMode(mode: ImportMode) {
@@ -134,6 +149,12 @@ export default function DocEditor({
       setTab("source");
     } else if (mode === "source") {
       onContentMode("html");
+      setTab("source");
+    } else if (mode === "file") {
+      onContentMode("file");
+      setTab("source");
+    } else if (mode === "spine") {
+      onContentMode("spine");
       setTab("source");
     }
   }
@@ -158,11 +179,39 @@ export default function DocEditor({
     }
   }
 
+  async function replaceSpineBundle(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (spineUploading) return;
+    const validation = validateSpineFiles(files);
+    if (validation) {
+      toast.error(validation);
+      return;
+    }
+    setSpineUploading(true);
+    try {
+      const bundle = await uploadSpineBundle(files);
+      const meta = {
+        ...bundle,
+        name: title.trim() || spineTitleFromFiles(files),
+      };
+      onSpine(meta);
+      onContent(meta.jsonUrl);
+      onContentMode("spine");
+      onIcon("lucide:film");
+      toast.success("Spine bundle uploaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Spine bundle upload failed");
+    } finally {
+      setSpineUploading(false);
+    }
+  }
+
   const tabs: { id: EditTab; label: string; icon: typeof Code2 }[] = [
     {
       id: "source",
-      label: isFileMode ? "File" : isUrlMode ? "URL" : "HTML Source",
-      icon: isFileMode ? FileUp : isUrlMode ? Link2 : Code2,
+      label: isSpineMode ? "Spine" : isFileMode ? "File" : isUrlMode ? "URL" : "HTML Source",
+      icon: isSpineMode ? Film : isFileMode ? FileUp : isUrlMode ? Link2 : Code2,
     },
     { id: "preview", label: "Preview", icon: Eye },
   ];
@@ -327,6 +376,44 @@ export default function DocEditor({
 
   function renderEditorBody(className?: string) {
     if (tab === "source") {
+      if (isSpineMode) {
+        return (
+          <div className={cn("flex flex-col gap-4 p-5", className)}>
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-subtle">
+                Spine bundle
+              </label>
+              {spine ? (
+                <div className="mt-2 rounded-xl border border-line bg-panel-2 px-3 py-2 text-sm">
+                  <div className="truncate font-medium text-ink">{spine.name}</div>
+                  <div className="mt-0.5 text-xs text-subtle">
+                    {spine.files.length} files ·{" "}
+                    {formatFileSize(spine.files.reduce((sum, f) => sum + f.size, 0))}
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-subtle">No Spine bundle metadata found.</p>
+              )}
+            </div>
+            <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-xl border border-dashed border-line-strong bg-panel-2 px-4 py-2 text-sm font-medium text-ink transition hover:border-brand/50 hover:bg-brand-soft">
+              {spineUploading ? (
+                <Loader2 size={16} className="animate-spin text-brand" />
+              ) : (
+                <Film size={16} className="text-brand" />
+              )}
+              {spineUploading ? "Uploading…" : "Replace Spine bundle"}
+              <input
+                type="file"
+                className="hidden"
+                multiple
+                onChange={replaceSpineBundle}
+                accept=".json,.skel,.atlas,image/png,image/webp,image/jpeg"
+              />
+            </label>
+          </div>
+        );
+      }
+
       if (isFileMode) {
         return (
           <div className={cn("flex flex-col gap-4 p-5", className)}>
@@ -402,7 +489,14 @@ export default function DocEditor({
 
     return (
       <div className={cn("relative min-h-0 overflow-hidden", className)}>
-        {isFileMode && file ? (
+        {isSpineMode && spine ? (
+          <SpinePreview
+            spine={spine}
+            title={title}
+            compact
+            className="h-full rounded-none border-0"
+          />
+        ) : isFileMode && file ? (
           <FilePreview file={file} title={title} compact className="h-full rounded-none border-0" />
         ) : (
           <DocContentFrame
@@ -432,6 +526,16 @@ export default function DocEditor({
       id: "url",
       title: "External URL",
       desc: "Link to an already deployed page (Workers, Pages…)",
+    },
+    {
+      id: "file",
+      title: "File Upload",
+      desc: "Upload PDF, image, video, Word, Excel, PowerPoint",
+    },
+    {
+      id: "spine",
+      title: "Spine Bundle",
+      desc: "Upload .json/.atlas/textures and preview animation",
     },
     ...(FILE_IMPORT_ENABLED
       ? [
@@ -577,7 +681,7 @@ export default function DocEditor({
               ))}
 
               <div className="ml-auto flex items-center gap-2 pb-1 pr-1">
-                {tab === "source" && !isFileMode && (
+                {tab === "source" && !isFileMode && !isSpineMode && (
                   <div className="flex rounded-lg border border-line bg-panel-2 p-0.5">
                     <button
                       type="button"
@@ -605,7 +709,7 @@ export default function DocEditor({
                     </button>
                   </div>
                 )}
-                {tab === "source" && !isUrlMode && !isFileMode && (
+                {tab === "source" && !isUrlMode && !isFileMode && !isSpineMode && (
                   <button
                     type="button"
                     onClick={copyHtmlPrompt}
@@ -616,7 +720,7 @@ export default function DocEditor({
                     Copy prompt
                   </button>
                 )}
-                {tab === "source" && !isUrlMode && !isFileMode && (
+                {tab === "source" && !isUrlMode && !isFileMode && !isSpineMode && (
                   <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
                     <span>Wrap</span>
                     <button
@@ -656,11 +760,15 @@ export default function DocEditor({
                 <button
                   type="button"
                   onClick={async () => {
-                    if (!content.trim()) return;
+                    if (!content.trim() && !file && !spine) return;
                     const ok = await confirmAction({
                       title: "Clear content",
                       message: isUrlMode
                         ? "Clear the URL? Unsaved changes will be lost."
+                        : isSpineMode
+                          ? "Clear the Spine bundle? Unsaved changes will be lost."
+                          : isFileMode
+                            ? "Clear the file? Unsaved changes will be lost."
                         : "Clear all HTML in the editor? Unsaved changes will be lost.",
                       confirmLabel: "Delete",
                       cancelLabel: "Cancel",
@@ -668,6 +776,8 @@ export default function DocEditor({
                     });
                     if (ok) {
                       onContent("");
+                      if (isFileMode) onFile(null);
+                      if (isSpineMode) onSpine(null);
                       toast.success("Content cleared");
                     }
                   }}
@@ -822,8 +932,9 @@ export default function DocEditor({
               {[
                 "Paste HTML in HTML Source mode",
                 "Use External URL for pages already on Workers or static hosts",
+                "Use File Upload for PDFs, images, videos, and Office files",
+                "Use Spine Bundle for animation preview assets",
                 "Use Copy prompt to generate HTML with external AI",
-                "Preview before saving",
               ].map((tip) => (
                 <li
                   key={tip}

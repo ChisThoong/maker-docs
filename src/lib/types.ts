@@ -14,7 +14,7 @@ export type DocType =
   | "feature"
   | "doc";
 
-export type ContentMode = "html" | "markdown" | "url" | "file";
+export type ContentMode = "html" | "markdown" | "url" | "file" | "spine";
 
 export type FileKind =
   | "image"
@@ -30,6 +30,24 @@ export interface DocFileMeta {
   size: number;
   mimeType: string;
   kind: FileKind;
+  uploadedAt?: string;
+}
+
+export interface SpineFileMeta {
+  name: string;
+  url: string;
+  size: number;
+  mimeType: string;
+}
+
+export interface SpineBundleMeta {
+  bundleId: string;
+  name: string;
+  baseUrl: string;
+  jsonUrl: string;
+  atlasUrl: string;
+  textureUrls: string[];
+  files: SpineFileMeta[];
   uploadedAt?: string;
 }
 
@@ -57,6 +75,7 @@ export interface Doc extends DocMeta {
   content: string;
   contentMode: ContentMode;
   file?: DocFileMeta | null;
+  spine?: SpineBundleMeta | null;
   publicId?: string | null;
 }
 

@@ -9,6 +9,7 @@ import type {
   ContentMode,
   DocVisibility,
   DocFileMeta,
+  SpineBundleMeta,
 } from "./types";
 
 const COLLECTION = COL.documents;
@@ -26,6 +27,7 @@ interface DocRecord {
   content: string;
   contentMode: ContentMode;
   file?: DocFileMeta | null;
+  spine?: SpineBundleMeta | null;
   createdAt: string;
   updatedAt: string;
   createdBy?: string | null;
@@ -57,6 +59,7 @@ function toDoc(r: DocRecord): Doc {
     content: r.content ?? "",
     contentMode: r.contentMode ?? "html",
     file: r.file ?? null,
+    spine: r.spine ?? null,
     publicId: r.publicId ?? null,
   };
 }
@@ -110,6 +113,7 @@ export interface CreateDocInput {
   content?: string;
   contentMode?: ContentMode;
   file?: DocFileMeta | null;
+  spine?: SpineBundleMeta | null;
   subtitle?: string;
   createdBy?: string | null;
 }
@@ -139,6 +143,7 @@ export async function createDoc(input: CreateDocInput): Promise<Doc> {
     content: input.content ?? "",
     contentMode: input.contentMode ?? "html",
     file: input.file ?? null,
+    spine: input.spine ?? null,
     createdAt: now,
     updatedAt: now,
     createdBy: input.createdBy ?? null,
@@ -199,6 +204,7 @@ export type UpdateDocInput = Partial<
     | "content"
     | "contentMode"
     | "file"
+    | "spine"
   >
 >;
 

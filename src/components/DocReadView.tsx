@@ -19,6 +19,7 @@ import DocIcon, { isImage } from "./DocIcon";
 import StatusBadge from "./StatusBadge";
 import DocContentFrame from "./DocContentFrame";
 import FilePreview from "./FilePreview";
+import SpinePreview from "./SpinePreview";
 import { cn, timeAgo } from "@/lib/utils";
 
 interface DocAccess {
@@ -57,7 +58,10 @@ export default function DocReadView({
   const [activeSection, setActiveSection] = useState<string>("");
   const parentDoc = breadcrumb.at(-1);
   const isPreviewDoc =
-    doc.contentMode === "html" || doc.contentMode === "url" || doc.contentMode === "file";
+    doc.contentMode === "html" ||
+    doc.contentMode === "url" ||
+    doc.contentMode === "file" ||
+    doc.contentMode === "spine";
   const imageIcon = isImage(doc.icon);
 
   function goBack() {
@@ -255,7 +259,30 @@ export default function DocReadView({
             </header>
 
             {/* Content */}
-            {doc.contentMode === "file" ? (
+            {doc.contentMode === "spine" ? (
+              doc.spine ? (
+                <div className="doc-view-content mt-5 min-h-0 flex-1 animate-fade-up overflow-hidden">
+                  <SpinePreview
+                    spine={doc.spine}
+                    title={doc.title}
+                    compact
+                    className="h-full min-h-0"
+                  />
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-line p-10 text-center text-subtle">
+                  Spine bundle metadata is missing. Click{" "}
+                  <button
+                    type="button"
+                    onClick={onEdit}
+                    className="font-medium text-brand hover:underline"
+                  >
+                    Edit
+                  </button>{" "}
+                  to replace the bundle.
+                </div>
+              )
+            ) : doc.contentMode === "file" ? (
               doc.file ? (
                 <div className="doc-view-content mt-5 min-h-0 flex-1 animate-fade-up overflow-hidden">
                   <FilePreview

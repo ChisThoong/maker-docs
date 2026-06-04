@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, FileWarning, Lock } from "lucide-react";
-import type { ContentMode, DocFileMeta } from "@/lib/types";
+import type { ContentMode, DocFileMeta, SpineBundleMeta } from "@/lib/types";
 import {
   DOC_IFRAME_SANDBOX,
   externalEmbedSrc,
   normalizeExternalUrl,
   resolveDocEmbed,
 } from "@/lib/content-embed";
+import { spinePlayerHtml } from "@/lib/spine-content";
 
 type State = "loading" | "ok" | "forbidden" | "notfound";
 
@@ -31,6 +32,7 @@ export default function DocReader({
   const [content, setContent] = useState("");
   const [contentMode, setContentMode] = useState<ContentMode>("html");
   const [file, setFile] = useState<DocFileMeta | null>(null);
+  const [spine, setSpine] = useState<SpineBundleMeta | null>(null);
   const [state, setState] = useState<State>("loading");
 
   useEffect(() => {
@@ -44,6 +46,7 @@ export default function DocReader({
       setContent(data.doc.content ?? "");
       setContentMode(data.doc.contentMode ?? "html");
       setFile(data.doc.file ?? null);
+      setSpine(data.doc.spine ?? null);
       setState("ok");
     })();
   }, [id, token]);
@@ -82,6 +85,35 @@ export default function DocReader({
             : "Document not found."}
         </p>
       </div>
+    );
+  }
+
+  if (contentMode === "spine") {
+    if (!spine) {
+      return (
+        <div style={{ ...pageCenter, color: "#6b7280" }}>
+          Spine bundle metadata is missing.
+        </div>
+      );
+    }
+    return (
+      <iframe
+        title={spine.name}
+        srcDoc={spinePlayerHtml(spine)}
+        sandbox="allow-scripts allow-same-origin"
+        style={{
+          position: "fixed",
+          inset: 0,
+          width: "100vw",
+          height: "100dvh",
+          border: 0,
+          margin: 0,
+          padding: 0,
+          display: "block",
+          background: "#060a14",
+          colorScheme: "dark",
+        }}
+      />
     );
   }
 

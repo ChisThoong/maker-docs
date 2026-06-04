@@ -4,6 +4,8 @@
  * file on disk and returns a public URL. We persist only the URL string.
  */
 
+import type { SpineBundleMeta } from "./types";
+
 const SERVER_URL = process.env.NEXT_PUBLIC_UPLOAD_SERVER_URL ?? "";
 const SERVER_KEY = process.env.NEXT_PUBLIC_UPLOAD_SERVER_KEY ?? "";
 
@@ -49,6 +51,43 @@ export function uploadFile(file: File): Promise<string> {
     };
     reader.readAsDataURL(file);
   });
+}
+
+export async function uploadSpineBundle(files: File[]): Promise<SpineBundleMeta> {
+  if (!SERVER_URL) throw new Error("Missing NEXT_PUBLIC_UPLOAD_SERVER_URL");
+  if (!files.length) throw new Error("Choose Spine files to upload");
+
+  const form = new FormData();
+  for (const file of files) {
+    form.append("files", file, file.name);
+  }
+
+  const res = await fetch(`${SERVER_URL.replace(/\/+$/, "")}/upload-bundle`, {
+    method: "POST",
+    headers: SERVER_KEY ? { "x-api-key": SERVER_KEY } : undefined,
+    body: form,
+  });
+  if (!res.ok) {
+    const msg = await res.text().catch(() => "");
+    throw new Error(`Bundle upload failed (${res.status})${msg ? `: ${msg}` : ""}`);
+  }
+  const data = (await res.json()) as Partial<SpineBundleMeta> & {
+    success?: boolean;
+    message?: string;
+  };
+  if (!data?.bundleId || !data.jsonUrl || !data.atlasUrl) {
+    throw new Error(data.message || "Server did not return a Spine bundle");
+  }
+  return {
+    bundleId: data.bundleId,
+    name: data.name || data.bundleId,
+    baseUrl: data.baseUrl || "",
+    jsonUrl: data.jsonUrl,
+    atlasUrl: data.atlasUrl,
+    textureUrls: data.textureUrls ?? [],
+    files: data.files ?? [],
+    uploadedAt: new Date().toISOString(),
+  };
 }
 
 /** Resolve a possibly-relative stored value into an absolute URL. */
